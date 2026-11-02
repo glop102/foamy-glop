@@ -13,35 +13,62 @@ FoamFile
 #include "closetDerived"
 
 // Built in inches; Allrun scales to metres after the patches are made.
+// Three blocks: the closet, an attic slab above it, and the attic slab's
+// extension out over the office. subsetMesh later keeps only the closet and
+// the duct running through the attic.
 vertices
 (
-    (0        0        0)
-    ($closetW 0        0)
-    ($closetW $closetD 0)
-    (0        $closetD 0)
-    (0        0        $closetH)
-    ($closetW 0        $closetH)
-    ($closetW $closetD $closetH)
-    (0        $closetD $closetH)
+    (0        0           0)            // 0  closet
+    ($closetW 0           0)            // 1
+    ($closetW $closetD    0)            // 2
+    (0        $closetD    0)            // 3
+    (0        0           $closetH)     // 4
+    ($closetW 0           $closetH)     // 5
+    ($closetW $closetD    $closetH)     // 6
+    (0        $closetD    $closetH)     // 7
+    (0        0           $atticTop)    // 8  attic over the closet
+    ($closetW 0           $atticTop)    // 9
+    ($closetW $closetD    $atticTop)    // 10
+    (0        $closetD    $atticTop)    // 11
+    (0        $atticFront $closetH)     // 12 attic over the office
+    ($closetW $atticFront $closetH)     // 13
+    (0        $atticFront $atticTop)    // 14
+    ($closetW $atticFront $atticTop)    // 15
 );
 
 blocks
 (
     hex (0 1 2 3 4 5 6 7) ($nx $ny $nz)
     simpleGrading (1 1 (($fineZ $nzFine 1) ($coarseZ $nzCoarse 1)))
+
+    hex (4 5 6 7 8 9 10 11) ($nx $ny $nzAttic) simpleGrading (1 1 1)
+
+    hex (12 13 5 4 14 15 9 8) ($nx $nyAttic $nzAttic) simpleGrading (1 1 1)
 );
 
 boundary
 (
     floor     { type wall; faces ((0 3 2 1)); }
-    ceiling   { type wall; faces ((4 5 6 7)); }
     leftWall  { type wall; faces ((0 4 7 3)); }
     rightWall { type wall; faces ((1 2 6 5)); }
     frontWall { type wall; faces ((0 1 5 4)); }
     backWall  { type wall; faces ((3 7 6 2)); }
 
-    // Filled by subsetMesh when the rack is cut out of the room.
-    rackWalls { type wall; faces (); }
+    // Underside of the attic over the office: all of it is removed except
+    // the office register at the bottom of the duct.
+    officeRegister { type patch; faces ((12 4 5 13)); }
+
+    // Filled by subsetMesh: every face exposed by cutting away the attic and
+    // the rack. createPatch then sorts out the closet ceiling and the rack's
+    // sides, leaving only the duct walls.
+    ductWalls { type wall; faces (); }
 );
+
+// The rest of the attic slab's outside; all removed by subsetMesh.
+defaultPatch
+{
+    name    attic;
+    type    wall;
+}
 
 // ************************************************************************* //

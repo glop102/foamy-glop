@@ -25,16 +25,16 @@ boundaryField
     }
 
     // Openings see the house as a large room at rest.
-    "(doorGap|highVent)"
+    "(highVent|officeRegister)"
     {
         type            totalPressure;
         p0              uniform 1e5;
         value           $internalField;
     }
 
-    acVent
+    doorGap
     {
-        ${:acVentP}
+        ${:doorGapP}
     }
 }
 

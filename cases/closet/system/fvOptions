@@ -12,6 +12,37 @@ FoamFile
 
 // Keeps early iterations from running away; a converged answer should sit
 // well inside these limits. If results touch them, they are not trustworthy.
+// Register grilles: a porous resistance filling each register boot, sized
+// so the boot's pressure drop is grilleK times the dynamic pressure.
+grilles
+{
+    // Included here, not at the top: every top-level dictionary in this file
+    // is read as a source term.
+    #include "closetDerived"
+
+    type            explicitPorositySource;
+
+    explicitPorositySourceCoeffs
+    {
+        selectionMode   cellZone;
+        cellZone        grilles;
+        type            DarcyForchheimer;
+
+        DarcyForchheimerCoeffs
+        {
+            d   (0 0 0);
+            f   ($grilleF $grilleF $grilleF);
+
+            coordinateSystem
+            {
+                origin  (0 0 0);
+                e1      (1 0 0);
+                e2      (0 1 0);
+            }
+        }
+    }
+}
+
 limitT
 {
     type            limitTemperature;

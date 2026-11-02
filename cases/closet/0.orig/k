@@ -23,7 +23,7 @@ boundaryField
         value           $internalField;
     }
 
-    "(floor|ceiling|leftWall|rightWall|frontWall|backWall|window|rackWalls|ups)"
+    "(floor|ceiling|leftWall|rightWall|frontWall|backWall|window|rackWalls|ups|ductWalls|attic)"
     {
         type            kqRWallFunction;
         value           $internalField;
@@ -32,7 +32,7 @@ boundaryField
     // Air blown in by a fan arrives a little turbulent. Fixed values rather
     // than ones derived from the inflow speed, which would be zero for a
     // fan that is off.
-    "(nasBack|gamingBack|devBack|acVent)"
+    "(nasBack|gamingBack|devBack|doorGap)"
     {
         type            inletOutlet;
         inletValue      uniform 5e-3;

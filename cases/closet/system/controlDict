@@ -60,7 +60,7 @@ functions
     // A closed opening has no faces, which these treat as a warning.
     doorGapFlow  { $nasIntake; name doorGap; operation sum; fields (phi); errors warn; }
     highVentFlow { $doorGapFlow; name highVent; }
-    acVentFlow   { $doorGapFlow; name acVent; }
+    officeRegisterFlow { $doorGapFlow; name officeRegister; }
     fanFlow      { $doorGapFlow; name fan; }
 
     // Heat conducted out through each wall, W.
@@ -68,7 +68,7 @@ functions
     {
         type            wallHeatFlux;
         libs            (fieldFunctionObjects);
-        patches         (leftWall rightWall frontWall backWall ceiling floor window);
+        patches         (leftWall rightWall frontWall backWall ceiling floor window ductWalls);
         writeFields     false;
         writeControl    timeStep;
         writeInterval   100;
@@ -111,6 +111,13 @@ functions
                 type        cuttingPlane;
                 planeType   pointAndNormal;
                 pointAndNormalDict { point (0 $frontCutY 0); normal (0 1 0); }
+                interpolate false;
+            }
+            duct
+            {
+                type        cuttingPlane;
+                planeType   pointAndNormal;
+                pointAndNormalDict { point ($ductCutX 0 0); normal (1 0 0); }
                 interpolate false;
             }
             top

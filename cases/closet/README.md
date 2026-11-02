@@ -20,6 +20,8 @@ directory:
 - `side.png`: a slice through the middle of the rack, door on the left
 - `front.png`: a slice across the closet between the door and the rack
 - `top.png`: a level slice through the middle of the gaming machine
+- `duct.png`: a side slice through the ceiling register, duct and office
+  register
 
 To see everything in 3D, `touch runs/<scenario>/case.foam` and open it in
 ParaView (`nix shell nixpkgs#paraview`).
@@ -35,8 +37,12 @@ All in `system/closetSettings`, in **inches**. Standing in the doorway:
   30 × 51 in window, 28 in off the floor and 7 in from the back wall.
 - Ceiling: drywall under R-22, attic above (assumed at the outside
   temperature). Floor: plywood and hardwood over 68 °F house.
-- HVAC supply register, 5 × 11 in, in the middle of the ceiling, ducted
-  through the attic to the rest of the house. Off by default.
+- HVAC register, 5 × 11 in, in the middle of the ceiling. An 8 ft run of
+  6 in insulated flex duct through the attic joins it to an identical
+  register in the office ceiling, and the office is open to the house. With
+  the HVAC off, warm closet air loops up this duct, out into the office and
+  back in under the door. That loop is what brings the model in line with
+  the ~95 °F seen in real life.
 - Open-frame rack against the left wall, fronts facing the door. Only the
   equipment is modelled, a 17 × 24 in stack starting 5 in off the floor,
   bottom to top:
@@ -70,19 +76,31 @@ A scenario is a few lines in `scenarios/` that override `closetSettings`.
 Copy one and edit it:
 
 ```sh
-cp scenarios/gaming-load scenarios/ac-on
-echo 'acCFM 100;' >> scenarios/ac-on
-./Allrun ac-on
+cp scenarios/back-fan scenarios/back-fan-40
+sed -i 's/fanCFM .*/fanCFM 40;/' scenarios/back-fan-40
+./Allrun back-fan-40
 ```
+
+Scenarios so far:
+
+| Scenario | What changes | Closet avg | Gaming intake |
+| --- | --- | --- | --- |
+| `gaming-load` | nothing, the baseline | 94.4 °F | 91.9 °F |
+| `door-fan` | fan pushes 20 CFM in under the door | 94.1 °F | 91.5 °F |
+| `back-fan` | fan pulls 20 CFM out high on the back wall | 88.5 °F | 85.2 °F |
+
+The door fan barely helps because about 19 CFM already flows in under the
+door on its own. The back fan helps because it adds a second way out.
 
 The levers already wired in:
 
-- `acCFM`, `acTempF`: HVAC supply through the ceiling register.
-- `registerMode open`: the register as a plain hole to the house instead,
-  for air drifting up the duct and out of the office register with the HVAC
-  off. No duct friction, so it is a best case; see `scenarios/register-open`.
-- `fan`, `fanCFM`: an exhaust fan ducted out of the closet (box position,
-  airflow).
+- `fan`, `fanCFM`: an exhaust fan pulling air out of the closet (box
+  position, airflow). Defaults to 6 × 6 in high on the back wall, off.
+- `doorGapMode fan`, `doorFanCFM`: a fan pushing office air in through the
+  door gap instead of leaving it passive.
+- `grilleK`: pressure loss of each register grille (2 to 5 is typical).
+- Duct layout: `registerX`, `registerY`, `officeRegisterY`, `ductDiameter`
+  and friends.
 - `highVent`: an extra passive opening to the house. Set `outflowHeight` to
   its height if air should leave by it; see the comment in `closetSettings`.
 - `doorGap`: the undercut, if you trim the door or add a grille.
@@ -106,6 +124,10 @@ around 0. Keep edges on the mesh: half inch below 32 in, whole inches above.
   hardwood for the floor.
 - **Openings** connect to the house as a large room of still air at
   `houseTempF`.
+- **The duct** is meshed: a boot above each register, joined by a round
+  pipe through a slab of attic, with R-6 insulation to the attic air. Each
+  boot holds a porous zone giving the grille's pressure loss (`grilleK`).
+  HVAC airflow through it is not modelled yet.
 - **Steady state** answers "where does this settle". It does not show warm-up
   time or the unsteady puffing of a single door gap.
 

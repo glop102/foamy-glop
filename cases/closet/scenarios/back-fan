@@ -1,0 +1,5 @@
+
+// ---- scenario: back-fan ----------------------------------------------------
+// gaming-load plus a 20 CFM exhaust fan high on the back wall, above the
+// rack's exhaust, pulling closet air out to the room behind.
+fanCFM          20;

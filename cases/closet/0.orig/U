@@ -23,16 +23,15 @@ boundaryField
         type            noSlip;
     }
 
-    "(doorGap|highVent)"
+    "(highVent|officeRegister)"
     {
         type            pressureInletOutletVelocity;
         value           $internalField;
     }
 
-    // HVAC supply or open hole, per registerMode (see closetDerived).
-    acVent
+    doorGap
     {
-        ${:acVentU}
+        ${:doorGapU}
     }
 
     fan

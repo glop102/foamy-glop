@@ -55,7 +55,11 @@ dev     { bottom 24.5;  top 31.5;  power 120;  cfm  50; }   // 4U, 5800X + 7900 
 closed   { min (-99 -99 -99); max (-98 -98 -98); }
 
 // Gap under the (closed) door, 24 in door centred in the front wall.
+// doorGapMode passive: open to the office, air goes whichever way it wants.
+// doorGapMode fan:     a fan pushes doorFanCFM of office air in through it.
 doorGap  { min (18 -0.1 0);    max (42 0.1 1.5); }
+doorGapMode     passive;
+doorFanCFM      20;
 
 // Window in the outside wall: 30 x 51 in, 28 in off the floor, 7 in from
 // the back wall.
@@ -64,23 +68,34 @@ window   { min (59.9 36 28);   max (60.1 66 79); }
 // Extra passive opening to the house, e.g. a wall grille. None for now.
 highVent { $closed; }
 
-// HVAC supply register, 5 x 11 in, in the middle of the ceiling. It is
-// ducted through the attic to the rest of the house's registers.
-// registerMode supply: the HVAC pushes acCFM of air at acTempF through it;
-//   acCFM 0 makes it solid ceiling.
-// registerMode open: a plain hole to the house, no duct friction. A best
-//   case for air looping closet -> duct -> office register -> door gap.
-acVent   { min (28 31 95.9);   max (33 42 96.1); }
-registerMode    supply;
-acCFM           0;
-acTempF         55;
-
-// Exhaust fan ducted out of the closet, in the ceiling behind the rack.
-// Always exists as a patch; 0 CFM makes it plain ceiling.
-fan      { min (5 50 95.9);    max (15 60 96.1); }
+// Exhaust fan pulling air out of the closet, high on the back wall above the
+// rack's exhaust. Always exists as a patch; 0 CFM makes it plain wall.
+fan      { min (8 72.9 86);    max (14 73.1 92); }
 fanCFM          0;
+
+// ---- Duct to the office ------------------------------------------------------
+// The ceiling register (5 x 11 in) is ducted through the attic to an
+// identical register in the office ceiling, 8 ft away towards the door. The
+// office is open to the house, so its register opens onto house air. With the
+// HVAC off, warm closet air can loop up the duct, out into the office, and
+// back in under the door.
+registerX       30.5;   // centre, across the closet
+registerY       36.5;   // centre of the closet register, door -> back
+officeRegisterY -59.5;  // centre of the office register (8 ft towards the door)
+registerW       5;      // size across (x)
+registerL       11;     // size along the duct (y)
+bootHeight      4;      // register box above the ceiling, up to the duct
+ductDiameter    6;      // round flex duct
+ductZ           103;    // height of the duct centreline in the attic
+atticTop        110;    // top of the meshed attic slab
+atticFront      -66;    // how far the attic slab reaches past the door wall
+
+// Pressure loss of each register grille, as a loss coefficient on the air
+// speed through it. Finned supply grilles run about 2-5.
+grilleK         4;
 
 // Height (inches) of the opening air is expected to leave by. The solver
 // treats the house air as still at this height, which keeps the chimney
-// effect between a low and a high opening right.
-outflowHeight   0;
+// effect between a low and a high opening right. Air leaves by the office
+// register.
+outflowHeight   96;

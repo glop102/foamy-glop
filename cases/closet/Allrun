@@ -34,11 +34,12 @@ do
     (
         cd "$run" || exit 1
 
-        # Mesh: a box for the closet, the rack cut out of it, then the
-        # openings and rack faces split off into their own patches.
+        # Mesh: the closet with an attic slab on top, cut down to the closet
+        # minus the rack plus the duct; then the openings, ceiling and rack
+        # faces split off into their own patches.
         runApplication blockMesh
         runApplication topoSet
-        runApplication subsetMesh air -patch rackWalls -overwrite
+        runApplication subsetMesh air -patch ductWalls -overwrite
         runApplication -s patches topoSet -dict system/topoSetDict.patches
         runApplication createPatch -overwrite
 

@@ -7,46 +7,30 @@ outsideT        #eval{ ($outsideTempF - 32)/1.8 + 273.15 };
 atticT          #eval{ ($atticTempF - 32)/1.8 + 273.15 };
 belowFloorT     #eval{ ($belowFloorTempF - 32)/1.8 + 273.15 };
 startT          #eval{ ($startTempF - 32)/1.8 + 273.15 };
-acT             #eval{ ($acTempF - 32)/1.8 + 273.15 };
 rhoAir          1.2;
 cfmToKgs        #eval{ 0.00047194745*$rhoAir };
 
-nasMassFlow     #eval{ ${nas/cfm}*$cfmToKgs };
-gamingMassFlow  #eval{ ${gaming/cfm}*$cfmToKgs };
-devMassFlow     #eval{ ${dev/cfm}*$cfmToKgs };
 upsPower        ${ups/power};
 nasPower        ${nas/power};
 gamingPower     ${gaming/power};
 devPower        ${dev/power};
 
-acMassFlow      #eval{ $acCFM*$cfmToKgs };
+nasMassFlow     #eval{ ${nas/cfm}*$cfmToKgs };
+gamingMassFlow  #eval{ ${gaming/cfm}*$cfmToKgs };
+devMassFlow     #eval{ ${dev/cfm}*$cfmToKgs };
 fanMassFlow     #eval{ $fanCFM*$cfmToKgs };
+doorFanMassFlow #eval{ $doorFanCFM*$cfmToKgs };
 
+// Mesh: the closet (fine cells below fineZ) plus an attic slab above it,
+// reaching out over the office for the duct.
 nx              #eval{ round($closetW/$cellSize) };
 ny              #eval{ round($closetD/$cellSize) };
 nzFine          #eval{ round(2*$fineZ/$cellSize) };
 coarseZ         #eval{ $closetH - $fineZ };
 nzCoarse        #eval{ round($coarseZ/$cellSize) };
 nz              #eval{ $nzFine + $nzCoarse };
-
-// Boundary conditions for the ceiling register, chosen by registerMode.
-// Picked here, at the top level, because #ifeq inside a boundaryField would
-// trip over its ".*" catch-all entry.
-#ifeq $registerMode open
-acVentU     { type pressureInletOutletVelocity; value uniform (0 0 0); }
-acVentP     { type totalPressure; p0 uniform 1e5; value uniform 1e5; }
-acVentT     { type inletOutlet; inletValue uniform $houseT; value uniform $startT; }
-#else
-acVentU
-{
-    type            flowRateInletVelocity;
-    massFlowRate    constant $acMassFlow;
-    rhoInlet        $rhoAir;
-    value           uniform (0 0 0);
-}
-acVentP     { type fixedFluxPressure; value uniform 1e5; }
-acVentT     { type inletOutlet; inletValue uniform $acT; value uniform $startT; }
-#endif
+nyAttic         #eval{ round(-$atticFront/$cellSize) };
+nzAttic         #eval{ round(($atticTop - $closetH)/$cellSize) };
 
 rackBottom      ${ups/bottom};
 rackTop         ${dev/top};
@@ -55,9 +39,43 @@ rackFrontHi     #eval{ $rackFront + 0.1 };
 rackBackLo      #eval{ $rackBack - 0.1 };
 rackBackHi      #eval{ $rackBack + 0.1 };
 
+// Duct: register boots rising from each ceiling, joined by a round pipe.
+regX0           #eval{ $registerX - 0.5*$registerW };
+regX1           #eval{ $registerX + 0.5*$registerW };
+regY0           #eval{ $registerY - 0.5*$registerL };
+regY1           #eval{ $registerY + 0.5*$registerL };
+offY0           #eval{ $officeRegisterY - 0.5*$registerL };
+offY1           #eval{ $officeRegisterY + 0.5*$registerL };
+bootTop         #eval{ $closetH + $bootHeight };
+bootTopOverlap  #eval{ $bootTop + 1 };     // so boot and pipe cells meet
+ductRadius      #eval{ 0.5*$ductDiameter };
+
+// Porous resistance in each register boot, giving grilleK over its height.
+grilleF         #eval{ $grilleK/($bootHeight*$inch) };
+
+// Door gap boundary conditions, chosen by doorGapMode. Picked here, at the
+// top level, because #ifeq inside a boundaryField trips over its ".*" entry.
+#ifeq $doorGapMode fan
+doorGapU
+{
+    type            flowRateInletVelocity;
+    massFlowRate    constant $doorFanMassFlow;
+    rhoInlet        $rhoAir;
+    value           uniform (0 0 0);
+}
+doorGapP        { type fixedFluxPressure; value uniform 1e5; }
+doorGapT        { type fixedValue; value uniform $houseT; }
+#else
+doorGapU        { type pressureInletOutletVelocity; value uniform (0 0 0); }
+doorGapP        { type totalPressure; p0 uniform 1e5; value uniform 1e5; }
+doorGapT        { type inletOutlet; inletValue uniform $houseT; value uniform $startT; }
+#endif
+
 // Plot planes, in metres (the solver runs after the mesh is scaled), nudged
 // off cell faces: through the middle of the rack side-on, across the closet
-// between door and rack, and level through the middle of the gaming machine.
+// between door and rack, level through the middle of the gaming machine, and
+// side-on through the duct.
 sideCutX        #eval{ (0.5*($rackLeft + $rackRight) + 0.3)*$inch };
 frontCutY       #eval{ (0.5*$rackFront + 0.3)*$inch };
 topCutZ         #eval{ (0.5*(${gaming/bottom} + ${gaming/top}) + 0.1)*$inch };
+ductCutX        #eval{ ($registerX + 0.3)*$inch };

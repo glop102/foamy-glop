@@ -17,7 +17,7 @@ import numpy as np
 KG_S_TO_CFM = 1.0 / (0.00047194745 * 1.2)
 M_TO_IN = 1 / 0.0254
 DEVICES = ("dev", "gaming", "nas")  # top to bottom, as they sit in the rack
-OPENINGS = ("doorGap", "highVent", "acVent", "fan")
+OPENINGS = ("doorGap", "highVent", "officeRegister", "fan")
 
 
 def c(kelvin):
@@ -148,6 +148,7 @@ def plot(run):
         "side": (1, 2, "door → back wall [in]", "height [in]", (5, 8)),
         "front": (0, 2, "left wall → window wall [in]", "height [in]", (5, 8)),
         "top": (0, 1, "left wall → window wall [in]", "door → back wall [in]", (5, 6)),
+        "duct": (1, 2, "office ← door wall → back wall [in]", "height [in]", (9, 6)),
     }
     for surface, (a, b, xlabel, ylabel, size) in views.items():
         tfile = os.path.join(latest, f"T_{surface}.raw")

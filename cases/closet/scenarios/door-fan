@@ -1,0 +1,6 @@
+
+// ---- scenario: door-fan ----------------------------------------------------
+// gaming-load plus a fan pushing 20 CFM of office air in through the door
+// gap. It all has to leave by the duct to the office register.
+doorGapMode     fan;
+doorFanCFM      20;

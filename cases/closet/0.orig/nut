@@ -22,7 +22,7 @@ boundaryField
         value           $internalField;
     }
 
-    "(floor|ceiling|leftWall|rightWall|frontWall|backWall|window|rackWalls|ups)"
+    "(floor|ceiling|leftWall|rightWall|frontWall|backWall|window|rackWalls|ups|ductWalls|attic)"
     {
         type            nutkWallFunction;
         value           $internalField;

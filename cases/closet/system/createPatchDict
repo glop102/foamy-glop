@@ -15,7 +15,10 @@ writeCyclicMatch    false;
 
 patches
 (
+    { name ceiling;     patchInfo { type wall;  } constructFrom set; set ceiling; }
+    { name rackWalls;   patchInfo { type wall;  } constructFrom set; set rackWalls; }
     { name ups;         patchInfo { type wall;  } constructFrom set; set ups; }
+    { name window;      patchInfo { type wall;  } constructFrom set; set window; }
     { name nasFront;    patchInfo { type patch; } constructFrom set; set nasFront; }
     { name nasBack;     patchInfo { type patch; } constructFrom set; set nasBack; }
     { name gamingFront; patchInfo { type patch; } constructFrom set; set gamingFront; }
@@ -24,9 +27,7 @@ patches
     { name devBack;     patchInfo { type patch; } constructFrom set; set devBack; }
     { name doorGap;     patchInfo { type patch; } constructFrom set; set doorGap; }
     { name highVent;    patchInfo { type patch; } constructFrom set; set highVent; }
-    { name acVent;      patchInfo { type patch; } constructFrom set; set acVent; }
     { name fan;         patchInfo { type patch; } constructFrom set; set fan; }
-    { name window;      patchInfo { type wall;  } constructFrom set; set window; }
 );
 
 // ************************************************************************* //

@@ -15,20 +15,79 @@ FoamFile
 // Face sets for the patches createPatch carves out of the walls and rack.
 actions
 (
+    // The register boots carry the grilles' pressure loss (system/fvOptions).
+    {
+        name    grilles;
+        type    cellSet;
+        action  new;
+        source  boxToCell;
+        boxes
+        (
+            ($regX0 $regY0 $closetH) ($regX1 $regY1 $bootTop)
+            ($regX0 $offY0 $closetH) ($regX1 $offY1 $bootTop)
+        );
+    }
+    {
+        name    grilles;
+        type    cellZoneSet;
+        action  new;
+        source  setToCellZone;
+        set     grilles;
+    }
+
+    // Closet ceiling: the faces exposed when the attic was cut away, minus
+    // the register opening, which stays open into the duct.
+    {
+        name    ceiling;
+        type    faceSet;
+        action  new;
+        source  boxToFace;
+        box     (-0.1 -0.1 #eval{$closetH - 0.1}) (#eval{$closetW + 0.1} #eval{$closetD + 0.1} #eval{$closetH + 0.1});
+    }
+    {
+        name    ceiling;
+        type    faceSet;
+        action  subset;
+        source  boundaryToFace;
+    }
+
+    // The rack's top and sides; front and back faces get their own patches.
+    {
+        name    rackWalls;
+        type    faceSet;
+        action  new;
+        source  boxToFace;
+        box     (#eval{$rackLeft - 0.1} $rackFrontLo #eval{$rackBottom - 0.1}) (#eval{$rackRight + 0.1} $rackBackHi #eval{$rackTop + 0.1});
+    }
+    {
+        name    rackWalls;
+        type    faceSet;
+        action  subtract;
+        source  boxToFace;
+        boxes
+        (
+            ($rackLeft $rackFrontLo $rackBottom) ($rackRight $rackFrontHi $rackTop)
+            ($rackLeft $rackBackLo $rackBottom) ($rackRight $rackBackHi $rackTop)
+        );
+    }
+    {
+        name    rackWalls;
+        type    faceSet;
+        action  subset;
+        source  boundaryToFace;
+    }
+
     // UPS: front and back faces together, as one heated wall.
     {
         name    ups;
         type    faceSet;
         action  new;
         source  boxToFace;
-        box     ($rackLeft $rackFrontLo ${ups/bottom}) ($rackRight $rackFrontHi ${ups/top});
-    }
-    {
-        name    ups;
-        type    faceSet;
-        action  add;
-        source  boxToFace;
-        box     ($rackLeft $rackBackLo ${ups/bottom}) ($rackRight $rackBackHi ${ups/top});
+        boxes
+        (
+            ($rackLeft $rackFrontLo ${ups/bottom}) ($rackRight $rackFrontHi ${ups/top})
+            ($rackLeft $rackBackLo ${ups/bottom}) ($rackRight $rackBackHi ${ups/top})
+        );
     }
     {
         name    nasFront;
@@ -92,13 +151,6 @@ actions
         action  new;
         source  boxToFace;
         box     ${highVent/min} ${highVent/max};
-    }
-    {
-        name    acVent;
-        type    faceSet;
-        action  new;
-        source  boxToFace;
-        box     ${acVent/min} ${acVent/max};
     }
     {
         name    fan;

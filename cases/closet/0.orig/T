@@ -38,32 +38,6 @@ boundaryField
         value           $internalField;
     }
 
-    // Ceiling: drywall under R-22 batts (6 in at k 0.039), attic above.
-    ceiling
-    {
-        type            externalWallHeatFluxTemperature;
-        mode            coefficient;
-        Ta              constant $atticT;
-        h               uniform 8;
-        thicknessLayers (0.0127 0.152);
-        kappaLayers     (0.17 0.039);
-        kappaMethod     fluidThermo;
-        value           $internalField;
-    }
-
-    // Floor: 3/4 in hardwood on 3/4 in plywood, over belowFloorTempF.
-    floor
-    {
-        type            externalWallHeatFluxTemperature;
-        mode            coefficient;
-        Ta              constant $belowFloorT;
-        h               uniform 6;
-        thicknessLayers (0.019 0.019);
-        kappaLayers     (0.16 0.13);
-        kappaMethod     fluidThermo;
-        value           $internalField;
-    }
-
     // Outside wall: drywall, R-13 batts, sheathing and siding.
     rightWall
     {
@@ -90,19 +64,43 @@ boundaryField
         value           $internalField;
     }
 
-    // Openings to the house.
-    "(doorGap|highVent)"
+    // Ceiling: drywall under R-22 batts (6 in at k 0.039), attic above.
+    ceiling
     {
-        type            inletOutlet;
-        inletValue      uniform $houseT;
+        type            externalWallHeatFluxTemperature;
+        mode            coefficient;
+        Ta              constant $atticT;
+        h               uniform 8;
+        thicknessLayers (0.0127 0.152);
+        kappaLayers     (0.17 0.039);
+        kappaMethod     fluidThermo;
         value           $internalField;
     }
 
-    // Supply air when the HVAC blows (with no flow it acts like ceiling), or
-    // house air coming back in when registerMode is open.
-    acVent
+    // Floor: 3/4 in hardwood on 3/4 in plywood, over belowFloorTempF.
+    floor
     {
-        ${:acVentT}
+        type            externalWallHeatFluxTemperature;
+        mode            coefficient;
+        Ta              constant $belowFloorT;
+        h               uniform 6;
+        thicknessLayers (0.019 0.019);
+        kappaLayers     (0.16 0.13);
+        kappaMethod     fluidThermo;
+        value           $internalField;
+    }
+
+    // Insulated flex duct (R-6) running through the attic.
+    ductWalls
+    {
+        type            externalWallHeatFluxTemperature;
+        mode            coefficient;
+        Ta              constant $atticT;
+        h               uniform 8;
+        thicknessLayers (0.038);
+        kappaLayers     (0.036);
+        kappaMethod     fluidThermo;
+        value           $internalField;
     }
 
     // Passive UPS: its power spread over its front and back faces.
@@ -113,6 +111,20 @@ boundaryField
         Q               constant $upsPower;
         kappaMethod     fluidThermo;
         value           $internalField;
+    }
+
+    // Openings onto house air.
+    "(highVent|officeRegister)"
+    {
+        type            inletOutlet;
+        inletValue      uniform $houseT;
+        value           $internalField;
+    }
+
+    // Passive, or a fan blowing office air in, per doorGapMode.
+    doorGap
+    {
+        ${:doorGapT}
     }
 
     // Each machine's exhaust: whatever came in its front, plus its power.
