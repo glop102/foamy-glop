@@ -1,0 +1,34 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  Server closet cooling case -- see cases/closet/README.md
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       volScalarField;
+    object      p_rgh;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+dimensions      [1 -1 -2 0 0 0 0];
+
+internalField   uniform 1e5;
+
+boundaryField
+{
+    ".*"
+    {
+        type            fixedFluxPressure;
+        value           $internalField;
+    }
+
+    // Openings see the house as a large room at rest.
+    "(lowVent|highVent)"
+    {
+        type            totalPressure;
+        p0              uniform 1e5;
+        value           $internalField;
+    }
+}
+
+// ************************************************************************* //

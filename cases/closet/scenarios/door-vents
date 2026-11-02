@@ -1,0 +1,8 @@
+
+// ---- scenario: door-vents --------------------------------------------------
+// Passive louvred grilles in the door: one near the floor, one near the top.
+// Hot air leaves high, cool air comes in low (the chimney effect).
+// Areas are open area; a real grille passes roughly half its face size.
+lowVent  { min (0.4 -0.001 0.1);   max (0.8 0.001 0.3); }
+highVent { min (0.4 -0.001 1.9);   max (0.8 0.001 2.1); }
+outflowHeight   2.0;

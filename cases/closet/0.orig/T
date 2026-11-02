@@ -1,0 +1,74 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  Server closet cooling case -- see cases/closet/README.md
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       volScalarField;
+    object      T;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#include "$FOAM_CASE/system/closetDerived"
+
+dimensions      [0 0 0 1 0 0 0];
+
+internalField   uniform $houseT;
+
+boundaryField
+{
+    // Walls, door and ceiling: half-inch drywall with the house on the far
+    // side. h covers convection and radiation on the house side.
+    walls
+    {
+        type            externalWallHeatFluxTemperature;
+        mode            coefficient;
+        Ta              constant $houseT;
+        h               uniform 8;
+        thicknessLayers (0.0127);
+        kappaLayers     (0.17);
+        kappaMethod     fluidThermo;
+        value           $internalField;
+    }
+
+    floor
+    {
+        type            zeroGradient;
+    }
+
+    // The rack's own heat goes out the back with its airflow.
+    rackWalls
+    {
+        type            zeroGradient;
+    }
+
+    rackFront
+    {
+        type            zeroGradient;
+    }
+
+    // Whatever went in the front, plus rackPower.
+    rackBack
+    {
+        type            outletMappedUniformInletHeatAddition;
+        outletPatch     rackFront;
+        Q               constant $rackPower;
+        TMax            373;
+        value           $internalField;
+    }
+
+    "(lowVent|highVent)"
+    {
+        type            inletOutlet;
+        inletValue      uniform $houseT;
+        value           $internalField;
+    }
+
+    fan
+    {
+        type            zeroGradient;
+    }
+}
+
+// ************************************************************************* //

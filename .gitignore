@@ -13,3 +13,6 @@ cases/*/[0-9]*.[0-9]*/
 # Local nix build results
 result
 result-*
+
+# Scenario runs of cases/closet, rebuilt by its Allrun.
+cases/closet/runs/

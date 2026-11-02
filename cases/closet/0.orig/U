@@ -1,0 +1,59 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  Server closet cooling case -- see cases/closet/README.md
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       volVectorField;
+    object      U;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#include "$FOAM_CASE/system/closetDerived"
+
+dimensions      [0 1 -1 0 0 0 0];
+
+internalField   uniform (0 0 0);
+
+boundaryField
+{
+    "(walls|floor|rackWalls)"
+    {
+        type            noSlip;
+    }
+
+    // Air the rack's fans pull out of the room...
+    rackFront
+    {
+        type            flowRateOutletVelocity;
+        massFlowRate    constant $rackMassFlow;
+        rhoOutlet       $rhoAir;
+        value           $internalField;
+    }
+
+    // ...and blow back into it.
+    rackBack
+    {
+        type            flowRateInletVelocity;
+        massFlowRate    constant $rackMassFlow;
+        rhoInlet        $rhoAir;
+        value           $internalField;
+    }
+
+    "(lowVent|highVent)"
+    {
+        type            pressureInletOutletVelocity;
+        value           $internalField;
+    }
+
+    fan
+    {
+        type            flowRateOutletVelocity;
+        massFlowRate    constant $fanMassFlow;
+        rhoOutlet       $rhoAir;
+        value           $internalField;
+    }
+}
+
+// ************************************************************************* //

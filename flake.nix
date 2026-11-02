@@ -38,6 +38,12 @@
               pkgs.gnumake
               pkgs.m4
               pkgs.which
+
+              # cases/closet/report.py: result summary and plots.
+              (pkgs.python3.withPackages (ps: [
+                ps.numpy
+                ps.matplotlib
+              ]))
             ];
 
             # Sourcing etc/bashrc is what makes an OpenFOAM shell an OpenFOAM

@@ -1,0 +1,40 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  Server closet cooling case -- see cases/closet/README.md
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       volScalarField;
+    object      k;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+dimensions      [0 2 -2 0 0 0 0];
+
+internalField   uniform 1e-3;
+
+boundaryField
+{
+    "(walls|floor|rackWalls)"
+    {
+        type            kqRWallFunction;
+        value           $internalField;
+    }
+
+    rackBack
+    {
+        type            turbulentIntensityKineticEnergyInlet;
+        intensity       0.1;
+        value           $internalField;
+    }
+
+    "(rackFront|lowVent|highVent|fan)"
+    {
+        type            inletOutlet;
+        inletValue      $internalField;
+        value           $internalField;
+    }
+}
+
+// ************************************************************************* //

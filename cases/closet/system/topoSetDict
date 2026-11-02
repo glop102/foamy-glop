@@ -1,0 +1,34 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  Server closet cooling case -- see cases/closet/README.md
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      topoSetDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#include "closetDerived"
+
+// Every cell except the ones inside the rack. subsetMesh keeps this set.
+actions
+(
+    {
+        name    air;
+        type    cellSet;
+        action  new;
+        source  boxToCell;
+        box     (-1 -1 -1) (100 100 100);
+    }
+    {
+        name    air;
+        type    cellSet;
+        action  subtract;
+        source  boxToCell;
+        box     ($rackX0 $rackY0 -1) ($rackX1 $rackY1 $rackZ1);
+    }
+);
+
+// ************************************************************************* //

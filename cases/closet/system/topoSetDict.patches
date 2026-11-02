@@ -1,0 +1,55 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  Server closet cooling case -- see cases/closet/README.md
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      topoSetDict.patches;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#include "closetDerived"
+
+// Face sets for the patches createPatch carves out of walls and rackWalls.
+actions
+(
+    {
+        name    rackFront;
+        type    faceSet;
+        action  new;
+        source  boxToFace;
+        box     ($rackX0 $rackY0lo 0) ($rackX1 $rackY0hi $rackZ1);
+    }
+    {
+        name    rackBack;
+        type    faceSet;
+        action  new;
+        source  boxToFace;
+        box     ($rackX0 $rackY1lo 0) ($rackX1 $rackY1hi $rackZ1);
+    }
+    {
+        name    lowVent;
+        type    faceSet;
+        action  new;
+        source  boxToFace;
+        box     ${lowVent/min} ${lowVent/max};
+    }
+    {
+        name    highVent;
+        type    faceSet;
+        action  new;
+        source  boxToFace;
+        box     ${highVent/min} ${highVent/max};
+    }
+    {
+        name    fan;
+        type    faceSet;
+        action  new;
+        source  boxToFace;
+        box     ${fan/min} ${fan/max};
+    }
+);
+
+// ************************************************************************* //

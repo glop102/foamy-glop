@@ -1,0 +1,26 @@
+// Values computed from closetSettings. Not meant to be edited.
+#include "closetSettings"
+
+houseT          #eval{ $houseTempC + 273.15 };
+rhoAir          1.2;
+rackMassFlow    #eval{ $rackCFM*0.00047194745*$rhoAir };   // kg/s
+fanMassFlow     #eval{ $fanCFM*0.00047194745*$rhoAir };
+
+nx              #eval{ round($closetW/$cellSize) };
+ny              #eval{ round($closetD/$cellSize) };
+nz              #eval{ round($closetH/$cellSize) };
+
+rackX0          $rackLeft;
+rackX1          #eval{ $rackLeft + $rackW };
+rackY0          $rackFrontGap;
+rackY1          #eval{ $rackFrontGap + $rackD };
+rackY0lo        #eval{ $rackY0 - 0.001 };
+rackY0hi        #eval{ $rackY0 + 0.001 };
+rackY1lo        #eval{ $rackY1 - 0.001 };
+rackY1hi        #eval{ $rackY1 + 0.001 };
+rackZ1          $rackH;
+
+// Plot planes, nudged off cell faces: a side view through the middle of the
+// rack, and a view of the gap between the door and the rack front.
+sideCutX        #eval{ $rackLeft + 0.5*$rackW + 0.3*$cellSize };
+frontCutY       #eval{ 0.5*$rackFrontGap + 0.3*$cellSize };

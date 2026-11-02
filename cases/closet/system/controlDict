@@ -1,0 +1,109 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  Server closet cooling case -- see cases/closet/README.md
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      controlDict;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+#include "closetDerived"
+
+application     buoyantSimpleFoam;
+
+startFrom       latestTime;
+startTime       0;
+stopAt          endTime;
+endTime         6000;       // steady state: "time" is just the iteration count
+deltaT          1;
+
+writeControl    timeStep;
+writeInterval   500;
+purgeWrite      1;
+
+writeFormat     binary;
+writePrecision  8;
+writeCompression off;
+timeFormat      general;
+timePrecision   6;
+runTimeModifiable false;
+
+functions
+{
+    // Average air temperature going into the rack: the number that matters.
+    intake
+    {
+        type            surfaceFieldValue;
+        libs            (fieldFunctionObjects);
+        regionType      patch;
+        name            rackFront;
+        operation       areaAverage;
+        fields          (T);
+        writeFields     false;
+        writeControl    timeStep;
+        writeInterval   10;
+        log             false;
+    }
+    intakeMax   { $intake; operation max; }
+    exhaust     { $intake; name rackBack; }
+
+    // Mass flow through each opening, kg/s. Positive is out of the closet.
+    // A closed opening has no faces, which these treat as a warning.
+    lowVentFlow  { $intake; name lowVent;  operation sum; fields (phi); errors warn; }
+    highVentFlow { $lowVentFlow; name highVent; }
+    fanFlow      { $lowVentFlow; name fan; }
+
+    air
+    {
+        type            volFieldValue;
+        libs            (fieldFunctionObjects);
+        operation       volAverage;
+        fields          (T);
+        writeFields     false;
+        writeControl    timeStep;
+        writeInterval   10;
+        log             false;
+    }
+    airMax      { $air; operation max; }
+
+    cuts
+    {
+        type            surfaces;
+        libs            (sampling);
+        writeControl    writeTime;
+        surfaceFormat   raw;
+        fields          (T U);
+        interpolationScheme cell;
+
+        surfaces
+        {
+            side
+            {
+                type        cuttingPlane;
+                planeType   pointAndNormal;
+                pointAndNormalDict
+                {
+                    point   ($sideCutX 0 0);
+                    normal  (1 0 0);
+                }
+                interpolate false;
+            }
+            front
+            {
+                type        cuttingPlane;
+                planeType   pointAndNormal;
+                pointAndNormalDict
+                {
+                    point   (0 $frontCutY 0);
+                    normal  (0 1 0);
+                }
+                interpolate false;
+            }
+        }
+    }
+}
+
+// ************************************************************************* //

@@ -1,8 +1,12 @@
 # foamy-glop
 
 An example [OpenFOAM](https://www.openfoam.com/) project packaged with Nix
-flakes: OpenFOAM v2606 built from source as a derivation, plus a lid-driven
-cavity case you can actually run.
+flakes: OpenFOAM v2606 built from source as a derivation, plus cases you can
+actually run:
+
+- `cases/closet`: cooling a server rack in a closet, with scenarios for door
+  vents and an exhaust fan. See [its README](cases/closet/README.md).
+- `cases/cavity`: the classic lid-driven cavity, as a smoke test.
 
 ## Quick start
 
@@ -70,7 +74,8 @@ nix build .#openfoam    # build only, leaves ./result
 | --- | --- |
 | `flake.nix` | Package and dev shell outputs |
 | `nix/openfoam.nix` | The OpenFOAM derivation |
-| `cases/cavity/` | The example case: lid-driven cavity, `icoFoam` |
+| `cases/closet/` | Server closet cooling, `buoyantSimpleFoam` |
+| `cases/cavity/` | Lid-driven cavity, `icoFoam` |
 
 ### Flake outputs
 

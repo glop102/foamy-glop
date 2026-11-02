@@ -1,0 +1,5 @@
+
+// ---- scenario: exhaust-fan -------------------------------------------------
+// Door undercut only, plus a ceiling fan ducted out (e.g. to the attic)
+// pulling more than the rack moves, so make-up air comes in under the door.
+fanCFM          110;

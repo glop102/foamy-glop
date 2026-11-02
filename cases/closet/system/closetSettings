@@ -1,0 +1,45 @@
+// Closet layout and cooling setup. Everything else in the case reads its
+// numbers from here. A scenario file (scenarios/*) is appended to this file in
+// the run directory, so a scenario only needs to list what it changes.
+//
+// Axes: x runs across the closet, y runs from the door wall (y = 0) to the
+// back wall, z points up. Lengths are metres.
+
+closetW         1.2;
+closetD         1.2;
+closetH         2.4;
+
+// Mesh cell size. Keep every length and opening a multiple of it, or edges
+// snap to the nearest cell face.
+cellSize        0.025;
+
+// Air temperature in the rest of the house. It feeds every opening, and the
+// closet walls lose heat to it through drywall.
+houseTempC      22;
+
+// The rack: a solid box on the floor. Room air goes in the front face (the
+// one facing the door), picks up rackPower, and comes out the back face.
+rackW           0.6;
+rackD           0.6;
+rackH           1.2;
+rackLeft        0.3;    // gap between the left wall and the rack
+rackFrontGap    0.3;    // gap between the door wall and the rack front
+rackPower       500;    // W of IT load
+rackCFM         80;     // total fan airflow through the rack
+
+// Openings to the house. Each is a box; closet wall faces inside the box
+// become the opening. Use `{ $closed; }` to remove one.
+closed   { min (-9 -9 -9); max (-8 -8 -8); }
+
+lowVent  { min (0.2 -0.001 0);     max (1.0 0.001 0.025); }    // door undercut
+highVent { $closed; }
+
+// Exhaust fan ducted out of the closet, in the ceiling above the rack's back.
+// It always exists as a patch; at 0 CFM it behaves like ceiling.
+fan      { min (0.5 0.9 2.399);    max (0.7 1.1 2.401); }
+fanCFM          0;
+
+// Height of the opening air is expected to *leave* by. The solver treats the
+// house air as standing still at this height, which keeps the chimney effect
+// between a low and a high vent correct. Irrelevant when a fan sets the flow.
+outflowHeight   0;

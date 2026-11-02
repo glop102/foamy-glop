@@ -1,0 +1,23 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  Server closet cooling case -- see cases/closet/README.md
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       dictionary;
+    object      fvOptions;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+// Keeps early iterations from running away; a converged answer should sit
+// well inside these limits. If results touch them, they are not trustworthy.
+limitT
+{
+    type            limitTemperature;
+    selectionMode   all;
+    min             273;
+    max             373;
+}
+
+// ************************************************************************* //

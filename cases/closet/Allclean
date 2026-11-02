@@ -1,0 +1,4 @@
+#!/bin/sh
+# Remove every scenario run.
+cd "${0%/*}" || exit 1
+rm -rf runs
