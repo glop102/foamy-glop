@@ -1,0 +1,10 @@
+#!/bin/sh
+# Return the case to its as-committed state: drop the mesh, the time
+# directories and the logs.
+cd "${0%/*}" || exit 1
+. "${WM_PROJECT_DIR:?run this inside 'nix develop'}"/bin/tools/CleanFunctions
+
+# cleanCase, not cleanCase0: the latter also deletes 0/, which is only correct
+# for cases that keep a 0.orig template to restore from. This case tracks its
+# initial and boundary conditions in 0/ directly.
+cleanCase

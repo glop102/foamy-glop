@@ -1,0 +1,12 @@
+#!/bin/sh
+# Lid-driven cavity: mesh it, check it, solve it, post-process it.
+# Each step writes a log.<application> file next to this script.
+cd "${0%/*}" || exit 1
+. "${WM_PROJECT_DIR:?run this inside 'nix develop'}"/bin/tools/RunFunctions
+
+runApplication blockMesh
+runApplication checkMesh
+runApplication "$(getApplication)"
+
+# Cartesian components of the velocity field, for the final time only.
+runApplication postProcess -func 'components(U)' -latestTime

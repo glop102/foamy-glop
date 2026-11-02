@@ -1,0 +1,15 @@
+# OpenFOAM writes its output straight into the case directory.
+log.*
+logs/
+postProcessing/
+processor*/
+polyMesh/
+
+# Time directories written by the solver. The `0` directory holds the initial
+# and boundary conditions and is part of the case, so it stays tracked.
+cases/*/[1-9]*/
+cases/*/[0-9]*.[0-9]*/
+
+# Local nix build results
+result
+result-*
