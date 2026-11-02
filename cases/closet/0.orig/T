@@ -14,60 +14,131 @@ FoamFile
 
 dimensions      [0 0 0 1 0 0 0];
 
-internalField   uniform $houseT;
+internalField   uniform $startT;
 
 boundaryField
 {
-    // Walls, door and ceiling: half-inch drywall with the house on the far
-    // side. h covers convection and radiation on the house side.
-    walls
+    // The rack's sides and anything that only takes air out.
+    ".*"
+    {
+        type            zeroGradient;
+    }
+
+    // Interior stud walls: drywall, air cavity, drywall, with the house on
+    // the far side. h is the house-side surface coefficient.
+    "(leftWall|frontWall|backWall)"
     {
         type            externalWallHeatFluxTemperature;
         mode            coefficient;
         Ta              constant $houseT;
         h               uniform 8;
-        thicknessLayers (0.0127);
-        kappaLayers     (0.17);
+        thicknessLayers (0.0127 0.089 0.0127);
+        kappaLayers     (0.17 0.52 0.17);
         kappaMethod     fluidThermo;
         value           $internalField;
     }
 
-    floor
+    // Ceiling: drywall under R-22 batts (6 in at k 0.039), attic above.
+    ceiling
     {
-        type            zeroGradient;
-    }
-
-    // The rack's own heat goes out the back with its airflow.
-    rackWalls
-    {
-        type            zeroGradient;
-    }
-
-    rackFront
-    {
-        type            zeroGradient;
-    }
-
-    // Whatever went in the front, plus rackPower.
-    rackBack
-    {
-        type            outletMappedUniformInletHeatAddition;
-        outletPatch     rackFront;
-        Q               constant $rackPower;
-        TMax            373;
+        type            externalWallHeatFluxTemperature;
+        mode            coefficient;
+        Ta              constant $atticT;
+        h               uniform 8;
+        thicknessLayers (0.0127 0.152);
+        kappaLayers     (0.17 0.039);
+        kappaMethod     fluidThermo;
         value           $internalField;
     }
 
-    "(lowVent|highVent)"
+    // Floor: 3/4 in hardwood on 3/4 in plywood, over belowFloorTempF.
+    floor
+    {
+        type            externalWallHeatFluxTemperature;
+        mode            coefficient;
+        Ta              constant $belowFloorT;
+        h               uniform 6;
+        thicknessLayers (0.019 0.019);
+        kappaLayers     (0.16 0.13);
+        kappaMethod     fluidThermo;
+        value           $internalField;
+    }
+
+    // Outside wall: drywall, R-13 batts, sheathing and siding.
+    rightWall
+    {
+        type            externalWallHeatFluxTemperature;
+        mode            coefficient;
+        Ta              constant $outsideT;
+        h               uniform 25;
+        thicknessLayers (0.0127 0.089 0.02);
+        kappaLayers     (0.17 0.04 0.12);
+        kappaMethod     fluidThermo;
+        value           $internalField;
+    }
+
+    // Double glazing, as a single equivalent layer (U about 2.8 W/m2K).
+    window
+    {
+        type            externalWallHeatFluxTemperature;
+        mode            coefficient;
+        Ta              constant $outsideT;
+        h               uniform 25;
+        thicknessLayers (0.012);
+        kappaLayers     (0.04);
+        kappaMethod     fluidThermo;
+        value           $internalField;
+    }
+
+    // Openings to the house.
+    "(doorGap|highVent)"
     {
         type            inletOutlet;
         inletValue      uniform $houseT;
         value           $internalField;
     }
 
-    fan
+    // Supply air when the HVAC blows (with no flow it acts like ceiling), or
+    // house air coming back in when registerMode is open.
+    acVent
     {
-        type            zeroGradient;
+        ${:acVentT}
+    }
+
+    // Passive UPS: its power spread over its front and back faces.
+    ups
+    {
+        type            externalWallHeatFluxTemperature;
+        mode            power;
+        Q               constant $upsPower;
+        kappaMethod     fluidThermo;
+        value           $internalField;
+    }
+
+    // Each machine's exhaust: whatever came in its front, plus its power.
+    nasBack
+    {
+        type            outletMappedUniformInletHeatAddition;
+        outletPatch     nasFront;
+        Q               constant $nasPower;
+        TMax            373;
+        value           $internalField;
+    }
+    gamingBack
+    {
+        type            outletMappedUniformInletHeatAddition;
+        outletPatch     gamingFront;
+        Q               constant $gamingPower;
+        TMax            373;
+        value           $internalField;
+    }
+    devBack
+    {
+        type            outletMappedUniformInletHeatAddition;
+        outletPatch     devFront;
+        Q               constant $devPower;
+        TMax            373;
+        value           $internalField;
     }
 }
 

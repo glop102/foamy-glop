@@ -1,0 +1,5 @@
+
+// ---- scenario: gaming-load -------------------------------------------------
+// The common case as built: door shut, gaming machine at a typical game
+// load, everything else idle, no AC airflow, no extra vents or fans. All values are the
+// defaults in closetSettings.

@@ -1,26 +1,63 @@
 // Values computed from closetSettings. Not meant to be edited.
 #include "closetSettings"
 
-houseT          #eval{ $houseTempC + 273.15 };
+inch            0.0254;
+houseT          #eval{ ($houseTempF - 32)/1.8 + 273.15 };
+outsideT        #eval{ ($outsideTempF - 32)/1.8 + 273.15 };
+atticT          #eval{ ($atticTempF - 32)/1.8 + 273.15 };
+belowFloorT     #eval{ ($belowFloorTempF - 32)/1.8 + 273.15 };
+startT          #eval{ ($startTempF - 32)/1.8 + 273.15 };
+acT             #eval{ ($acTempF - 32)/1.8 + 273.15 };
 rhoAir          1.2;
-rackMassFlow    #eval{ $rackCFM*0.00047194745*$rhoAir };   // kg/s
-fanMassFlow     #eval{ $fanCFM*0.00047194745*$rhoAir };
+cfmToKgs        #eval{ 0.00047194745*$rhoAir };
+
+nasMassFlow     #eval{ ${nas/cfm}*$cfmToKgs };
+gamingMassFlow  #eval{ ${gaming/cfm}*$cfmToKgs };
+devMassFlow     #eval{ ${dev/cfm}*$cfmToKgs };
+upsPower        ${ups/power};
+nasPower        ${nas/power};
+gamingPower     ${gaming/power};
+devPower        ${dev/power};
+
+acMassFlow      #eval{ $acCFM*$cfmToKgs };
+fanMassFlow     #eval{ $fanCFM*$cfmToKgs };
 
 nx              #eval{ round($closetW/$cellSize) };
 ny              #eval{ round($closetD/$cellSize) };
-nz              #eval{ round($closetH/$cellSize) };
+nzFine          #eval{ round(2*$fineZ/$cellSize) };
+coarseZ         #eval{ $closetH - $fineZ };
+nzCoarse        #eval{ round($coarseZ/$cellSize) };
+nz              #eval{ $nzFine + $nzCoarse };
 
-rackX0          $rackLeft;
-rackX1          #eval{ $rackLeft + $rackW };
-rackY0          $rackFrontGap;
-rackY1          #eval{ $rackFrontGap + $rackD };
-rackY0lo        #eval{ $rackY0 - 0.001 };
-rackY0hi        #eval{ $rackY0 + 0.001 };
-rackY1lo        #eval{ $rackY1 - 0.001 };
-rackY1hi        #eval{ $rackY1 + 0.001 };
-rackZ1          $rackH;
+// Boundary conditions for the ceiling register, chosen by registerMode.
+// Picked here, at the top level, because #ifeq inside a boundaryField would
+// trip over its ".*" catch-all entry.
+#ifeq $registerMode open
+acVentU     { type pressureInletOutletVelocity; value uniform (0 0 0); }
+acVentP     { type totalPressure; p0 uniform 1e5; value uniform 1e5; }
+acVentT     { type inletOutlet; inletValue uniform $houseT; value uniform $startT; }
+#else
+acVentU
+{
+    type            flowRateInletVelocity;
+    massFlowRate    constant $acMassFlow;
+    rhoInlet        $rhoAir;
+    value           uniform (0 0 0);
+}
+acVentP     { type fixedFluxPressure; value uniform 1e5; }
+acVentT     { type inletOutlet; inletValue uniform $acT; value uniform $startT; }
+#endif
 
-// Plot planes, nudged off cell faces: a side view through the middle of the
-// rack, and a view of the gap between the door and the rack front.
-sideCutX        #eval{ $rackLeft + 0.5*$rackW + 0.3*$cellSize };
-frontCutY       #eval{ 0.5*$rackFrontGap + 0.3*$cellSize };
+rackBottom      ${ups/bottom};
+rackTop         ${dev/top};
+rackFrontLo     #eval{ $rackFront - 0.1 };
+rackFrontHi     #eval{ $rackFront + 0.1 };
+rackBackLo      #eval{ $rackBack - 0.1 };
+rackBackHi      #eval{ $rackBack + 0.1 };
+
+// Plot planes, in metres (the solver runs after the mesh is scaled), nudged
+// off cell faces: through the middle of the rack side-on, across the closet
+// between door and rack, and level through the middle of the gaming machine.
+sideCutX        #eval{ (0.5*($rackLeft + $rackRight) + 0.3)*$inch };
+frontCutY       #eval{ (0.5*$rackFront + 0.3)*$inch };
+topCutZ         #eval{ (0.5*(${gaming/bottom} + ${gaming/top}) + 0.1)*$inch };

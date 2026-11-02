@@ -12,6 +12,7 @@ FoamFile
 
 #include "closetDerived"
 
+// Built in inches; Allrun scales to metres after the patches are made.
 vertices
 (
     (0        0        0)
@@ -26,29 +27,21 @@ vertices
 
 blocks
 (
-    hex (0 1 2 3 4 5 6 7) ($nx $ny $nz) simpleGrading (1 1 1)
+    hex (0 1 2 3 4 5 6 7) ($nx $ny $nz)
+    simpleGrading (1 1 (($fineZ $nzFine 1) ($coarseZ $nzCoarse 1)))
 );
 
 boundary
 (
-    floor
-    {
-        type    wall;
-        faces   ((0 3 2 1));
-    }
+    floor     { type wall; faces ((0 3 2 1)); }
+    ceiling   { type wall; faces ((4 5 6 7)); }
+    leftWall  { type wall; faces ((0 4 7 3)); }
+    rightWall { type wall; faces ((1 2 6 5)); }
+    frontWall { type wall; faces ((0 1 5 4)); }
+    backWall  { type wall; faces ((3 7 6 2)); }
 
     // Filled by subsetMesh when the rack is cut out of the room.
-    rackWalls
-    {
-        type    wall;
-        faces   ();
-    }
+    rackWalls { type wall; faces (); }
 );
-
-defaultPatch
-{
-    name    walls;
-    type    wall;
-}
 
 // ************************************************************************* //

@@ -13,6 +13,6 @@ FoamFile
 #include "$FOAM_CASE/system/closetDerived"
 
 dimensions      [0 1 0 0 0 0 0];
-value           $outflowHeight;
+value           #eval{ $outflowHeight*$inch };
 
 // ************************************************************************* //

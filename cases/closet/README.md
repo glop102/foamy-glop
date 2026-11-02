@@ -1,80 +1,113 @@
 # Server closet cooling
 
-Steady-state airflow and temperature in a closet holding a server rack, for
-comparing cooling ideas before cutting holes in a door. Solver:
+Steady-state airflow and temperature in the server closet, for comparing
+cooling ideas before buying fans or cutting holes. Solver:
 `buoyantSimpleFoam` (buoyant air, k-epsilon turbulence).
 
 ```sh
 nix develop
 cd cases/closet
-./Allrun                    # every scenario, ~5 min each on 8 cores
-./Allrun door-vents         # just one
-NPROCS=16 ./Allrun exhaust-fan
+./Allrun gaming-load         # ~15 min on 16 cores
+./Allrun                     # every scenario in scenarios/
+NPROCS=24 ./Allrun gaming-load
 ```
 
 Each scenario runs in `runs/<scenario>/`. When it finishes, `report.py` prints
-the numbers that matter and writes two pictures into the run directory:
+each machine's intake and exhaust temperature, airflow through the openings
+and heat lost through each wall, then writes three pictures into the run
+directory:
 
 - `side.png`: a slice through the middle of the rack, door on the left
-- `front.png`: a slice through the gap between the door and the rack front
+- `front.png`: a slice across the closet between the door and the rack
+- `top.png`: a level slice through the middle of the gaming machine
 
-With more than one scenario, a comparison table is printed at the end. To see
-everything in 3D, `touch runs/<scenario>/case.foam` and open it in ParaView
-(`nix shell nixpkgs#paraview`).
+To see everything in 3D, `touch runs/<scenario>/case.foam` and open it in
+ParaView (`nix shell nixpkgs#paraview`).
+
+## The closet as modelled
+
+All in `system/closetSettings`, in **inches**. Standing in the doorway:
+
+- 60 in wide, 73 in deep, 96 in tall. Door centred in the front wall, kept
+  shut, with a 1.5 in gap under it.
+- Left, front and back walls are interior stud walls with the house (68 °F)
+  behind them. The right wall is an outside wall (63 °F outside) with a
+  30 × 51 in window, 28 in off the floor and 7 in from the back wall.
+- Ceiling: drywall under R-22, attic above (assumed at the outside
+  temperature). Floor: plywood and hardwood over 68 °F house.
+- HVAC supply register, 5 × 11 in, in the middle of the ceiling, ducted
+  through the attic to the rest of the house. Off by default.
+- Open-frame rack against the left wall, fronts facing the door. Only the
+  equipment is modelled, a 17 × 24 in stack starting 5 in off the floor,
+  bottom to top:
+
+  | Machine | Height | Power | Airflow | Notes |
+  | --- | --- | --- | --- | --- |
+  | `ups` | 2U | 10 W | none | passive box, sheds heat from its faces |
+  | `nas` | 4U | 80 W | 40 CFM | 8 idle HDDs, 15 W CPU |
+  | `gaming` | 5U | 270 W | 100 CFM | 7700X + 7900 XTX, typical game load |
+  | `dev` | 4U | 120 W | 50 CFM | 5800X + 7900 XTX, light use |
+
+Powers and airflows are estimates, not measurements. The gaming figure is a
+measured 150 W GPU and 55 W CPU while playing EVE Online, about 40 W for the
+rest of the system, and PSU losses on top; flat out it would be about 560 W. A wall power meter
+reading beats all of these. If you can't measure airflow, about 160 CFM per kW
+gives a 20 °F rise across the machine.
 
 ## What to look at
 
-**Rack intake temperature** is the number to optimise. Servers care about the
-air arriving at their front panels, not the room average. ASHRAE's
-recommended range tops out at 27 °C (80.6 °F). The "hottest" intake figure
-shows whether hot exhaust is curling over the top of the rack and back into
-the front, which is the usual failure in a small closet.
+**Each machine's intake temperature** is the number to optimise. Machines
+care about the air arriving at their front panels, not the room average. The
+"hottest" intake figure shows whether hot exhaust is curling over the rack and
+back into the front.
 
-**Intake drift** says whether the solution has settled. If the report says
-it is still moving, raise `endTime` in `system/controlDict` and rerun.
+**Gaming intake drift** says whether the solution has settled. If the report
+says it is still moving, raise `endTime` in `system/controlDict` and rerun.
 
-## Changing the setup
+## Trying ideas
 
-All the knobs are in `system/closetSettings`: closet size, rack size and
-position, IT load in watts, rack airflow in CFM, house temperature, and the
-openings. A scenario is a few lines in `scenarios/` that override those
-settings. To try an idea, copy a scenario and edit it:
+A scenario is a few lines in `scenarios/` that override `closetSettings`.
+Copy one and edit it:
 
 ```sh
-cp scenarios/door-vents scenarios/bigger-vents
-$EDITOR scenarios/bigger-vents
-./Allrun bigger-vents
+cp scenarios/gaming-load scenarios/ac-on
+echo 'acCFM 100;' >> scenarios/ac-on
+./Allrun ac-on
 ```
 
-Openings are boxes in space. Any closet wall face whose centre falls inside
-the box becomes part of the opening. The door is the `y = 0` wall, the floor
-is `z = 0`, so a vent in the door is a box that is thin in `y` around 0. Keep
-edges on multiples of `cellSize` (2.5 cm).
+The levers already wired in:
 
-Available openings: `lowVent` and `highVent` (passive, open to the house) and
-`fan` (an exhaust fan with a fixed CFM, ducted out of the closet). For a
-passive pair, set `outflowHeight` to the height of the one air should leave
-by; see the comment in `closetSettings`.
+- `acCFM`, `acTempF`: HVAC supply through the ceiling register.
+- `registerMode open`: the register as a plain hole to the house instead,
+  for air drifting up the duct and out of the office register with the HVAC
+  off. No duct friction, so it is a best case; see `scenarios/register-open`.
+- `fan`, `fanCFM`: an exhaust fan ducted out of the closet (box position,
+  airflow).
+- `highVent`: an extra passive opening to the house. Set `outflowHeight` to
+  its height if air should leave by it; see the comment in `closetSettings`.
+- `doorGap`: the undercut, if you trim the door or add a grille.
+- Any machine's `power` and `cfm`.
+
+Openings are boxes. Any closet wall face whose centre falls inside the box
+becomes part of the opening, so a vent in the door is a box thin in `y`
+around 0. Keep edges on the mesh: half inch below 32 in, whole inches above.
 
 ## How it is modelled
 
-- **The rack** is a solid box. Its front face removes `rackCFM` of air from
-  the closet, and its back face returns the same air heated by `rackPower`
-  (boundary condition `outletMappedUniformInletHeatAddition`). Nothing about
-  the servers inside is modelled. Two consequences: blanking panels are
-  assumed (no air short-circuits through the rack), and the airflow stays
-  fixed even when the intake air gets hot, whereas real fans spin up.
-- **Walls, door and ceiling** are 12.7 mm drywall with the house at
-  `houseTempC` on the far side. This gives a small amount of heat loss even
-  with no ventilation. The floor is adiabatic.
+- **Each fan-cooled machine** is a solid box. Its front face removes `cfm` of
+  air from the closet, and its back face returns the same air heated by
+  `power` (boundary condition `outletMappedUniformInletHeatAddition`). What
+  happens inside it is not modelled, and its fans don't speed up when the
+  intake gets hot.
+- **Walls, floor and ceiling** lose heat to whatever is behind them through
+  layered constructions: drywall, air cavity, drywall for interior walls;
+  drywall, R-13 and siding for the outside wall; an equivalent double-glazing
+  layer for the window; drywall and R-22 for the ceiling; plywood and
+  hardwood for the floor.
 - **Openings** connect to the house as a large room of still air at
-  `houseTempC`. A vent is modelled as fully open; a louvred grille has roughly
-  half the free area of its face size, so draw the box at the free area.
+  `houseTempF`.
 - **Steady state** answers "where does this settle". It does not show warm-up
-  time or the unsteady puffing a single door undercut really has. Treat the
-  `closed-door` case as indicative only.
+  time or the unsteady puffing of a single door gap.
 
 These are good for ranking ideas against each other. Absolute temperatures
-depend on the real airflow and heat load of your gear, so set `rackPower` from
-a power meter reading and `rackCFM` from the server specs if you can (rule of
-thumb: about 160 CFM per kW for a 20 °F rise across the servers).
+depend on the real heat load and airflow of your gear.

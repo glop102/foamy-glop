@@ -17,7 +17,7 @@ application     buoyantSimpleFoam;
 startFrom       latestTime;
 startTime       0;
 stopAt          endTime;
-endTime         6000;       // steady state: "time" is just the iteration count
+endTime         8000;       // steady state: "time" is just the iteration count
 deltaT          1;
 
 writeControl    timeStep;
@@ -33,13 +33,13 @@ runTimeModifiable false;
 
 functions
 {
-    // Average air temperature going into the rack: the number that matters.
-    intake
+    // Air going into each machine: the numbers that matter.
+    nasIntake
     {
         type            surfaceFieldValue;
         libs            (fieldFunctionObjects);
         regionType      patch;
-        name            rackFront;
+        name            nasFront;
         operation       areaAverage;
         fields          (T);
         writeFields     false;
@@ -47,14 +47,33 @@ functions
         writeInterval   10;
         log             false;
     }
-    intakeMax   { $intake; operation max; }
-    exhaust     { $intake; name rackBack; }
+    nasIntakeMax { $nasIntake; operation max; }
+    nasExhaust { $nasIntake; name nasBack; }
+    gamingIntake { $nasIntake; name gamingFront; }
+    gamingIntakeMax { $gamingIntake; operation max; }
+    gamingExhaust { $gamingIntake; name gamingBack; }
+    devIntake { $nasIntake; name devFront; }
+    devIntakeMax { $devIntake; operation max; }
+    devExhaust { $devIntake; name devBack; }
 
-    // Mass flow through each opening, kg/s. Positive is out of the closet.
+    // Mass flow through each opening, kg/s, positive out of the closet.
     // A closed opening has no faces, which these treat as a warning.
-    lowVentFlow  { $intake; name lowVent;  operation sum; fields (phi); errors warn; }
-    highVentFlow { $lowVentFlow; name highVent; }
-    fanFlow      { $lowVentFlow; name fan; }
+    doorGapFlow  { $nasIntake; name doorGap; operation sum; fields (phi); errors warn; }
+    highVentFlow { $doorGapFlow; name highVent; }
+    acVentFlow   { $doorGapFlow; name acVent; }
+    fanFlow      { $doorGapFlow; name fan; }
+
+    // Heat conducted out through each wall, W.
+    wallHeat
+    {
+        type            wallHeatFlux;
+        libs            (fieldFunctionObjects);
+        patches         (leftWall rightWall frontWall backWall ceiling floor window);
+        writeFields     false;
+        writeControl    timeStep;
+        writeInterval   100;
+        log             false;
+    }
 
     air
     {
@@ -84,22 +103,21 @@ functions
             {
                 type        cuttingPlane;
                 planeType   pointAndNormal;
-                pointAndNormalDict
-                {
-                    point   ($sideCutX 0 0);
-                    normal  (1 0 0);
-                }
+                pointAndNormalDict { point ($sideCutX 0 0); normal (1 0 0); }
                 interpolate false;
             }
             front
             {
                 type        cuttingPlane;
                 planeType   pointAndNormal;
-                pointAndNormalDict
-                {
-                    point   (0 $frontCutY 0);
-                    normal  (0 1 0);
-                }
+                pointAndNormalDict { point (0 $frontCutY 0); normal (0 1 0); }
+                interpolate false;
+            }
+            top
+            {
+                type        cuttingPlane;
+                planeType   pointAndNormal;
+                pointAndNormalDict { point (0 0 $topCutZ); normal (0 0 1); }
                 interpolate false;
             }
         }

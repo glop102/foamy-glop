@@ -1,0 +1,9 @@
+
+// ---- scenario: register-open -----------------------------------------------
+// Same as gaming-load, but the ceiling register is an open hole to the house
+// with no duct in the way. Real air can loop closet -> register -> attic duct
+// -> office register -> office -> door gap -> closet; this is the best case
+// for that path, with no duct friction. Reality sits between this and
+// gaming-load.
+registerMode    open;
+outflowHeight   96;

@@ -10,6 +10,8 @@ FoamFile
 }
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 
+#include "$FOAM_CASE/system/closetDerived"
+
 dimensions      [1 -1 -2 0 0 0 0];
 
 internalField   uniform 1e5;
@@ -23,11 +25,16 @@ boundaryField
     }
 
     // Openings see the house as a large room at rest.
-    "(lowVent|highVent)"
+    "(doorGap|highVent)"
     {
         type            totalPressure;
         p0              uniform 1e5;
         value           $internalField;
+    }
+
+    acVent
+    {
+        ${:acVentP}
     }
 }
 

@@ -16,23 +16,26 @@ internalField   uniform 1e-4;
 
 boundaryField
 {
-    "(walls|floor|rackWalls)"
+    ".*"
+    {
+        type            inletOutlet;
+        inletValue      $internalField;
+        value           $internalField;
+    }
+
+    "(floor|ceiling|leftWall|rightWall|frontWall|backWall|window|rackWalls|ups)"
     {
         type            epsilonWallFunction;
         value           $internalField;
     }
 
-    rackBack
-    {
-        type            turbulentMixingLengthDissipationRateInlet;
-        mixingLength    0.02;
-        value           $internalField;
-    }
-
-    "(rackFront|lowVent|highVent|fan)"
+    // Air blown in by a fan arrives a little turbulent. Fixed values rather
+    // than ones derived from the inflow speed, which would be zero for a
+    // fan that is off.
+    "(nasBack|gamingBack|devBack|acVent)"
     {
         type            inletOutlet;
-        inletValue      $internalField;
+        inletValue      uniform 3e-3;
         value           $internalField;
     }
 }

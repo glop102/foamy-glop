@@ -22,7 +22,7 @@ boundaryField
         value           $internalField;
     }
 
-    "(walls|floor|rackWalls)"
+    "(floor|ceiling|leftWall|rightWall|frontWall|backWall|window|rackWalls|ups)"
     {
         type            compressible::alphatJayatillekeWallFunction;
         Prt             0.85;

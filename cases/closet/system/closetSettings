@@ -1,45 +1,86 @@
-// Closet layout and cooling setup. Everything else in the case reads its
-// numbers from here. A scenario file (scenarios/*) is appended to this file in
-// the run directory, so a scenario only needs to list what it changes.
+// The closet, the rack and how air gets in and out. Everything else in the
+// case reads its numbers from here. A scenario file (scenarios/*) is appended
+// to this file in the run directory, so it only lists what it changes.
 //
-// Axes: x runs across the closet, y runs from the door wall (y = 0) to the
-// back wall, z points up. Lengths are metres.
+// LENGTHS ARE INCHES. The mesh is built in inches and scaled to metres at the
+// end. Axes, standing in the doorway looking in:
+//   x  left wall (0) -> right/window wall (closetW)
+//   y  door wall (0) -> back wall (closetD)
+//   z  floor (0)     -> ceiling (closetH)
 
-closetW         1.2;
-closetD         1.2;
-closetH         2.4;
+closetW         60;
+closetD         73;
+closetH         96;
 
-// Mesh cell size. Keep every length and opening a multiple of it, or edges
-// snap to the nearest cell face.
-cellSize        0.025;
+// Mesh: 1 inch cells, half-height below fineZ so the 1.5 in door gap and the
+// 1U-ish rack positions resolve. Keep everything on the 0.5 / 1 inch grid.
+cellSize        1;
+fineZ           32;
 
-// Air temperature in the rest of the house. It feeds every opening, and the
-// closet walls lose heat to it through drywall.
-houseTempC      22;
+// Air temperatures. The house is behind the left, front and back walls, the
+// outside is behind the right wall (with the window in it), there is an
+// attic above the ceiling, and the floor sits over `belowFloorTempF`.
+houseTempF      68;
+outsideTempF    63;
+atticTempF      63;     // above the insulated ceiling
+belowFloorTempF 68;     // whatever is under the floor
 
-// The rack: a solid box on the floor. Room air goes in the front face (the
-// one facing the door), picks up rackPower, and comes out the back face.
-rackW           0.6;
-rackD           0.6;
-rackH           1.2;
-rackLeft        0.3;    // gap between the left wall and the rack
-rackFrontGap    0.3;    // gap between the door wall and the rack front
-rackPower       500;    // W of IT load
-rackCFM         80;     // total fan airflow through the rack
+// Where the closet air starts. The steady answer does not depend on it, but
+// starting near the real temperature gets there in far fewer iterations.
+startTempF      95;
 
-// Openings to the house. Each is a box; closet wall faces inside the box
-// become the opening. Use `{ $closed; }` to remove one.
-closed   { min (-9 -9 -9); max (-8 -8 -8); }
+// ---- Rack -----------------------------------------------------------------
+// Open-frame rack against the left wall, fronts facing the door, exhaust to
+// the back. Only the equipment is modelled; the frame's posts are ignored and
+// the empty rack space above the top machine is open air.
+// Each machine is a solid box with the same width and depth: air at the rack
+// front face is pulled in at `cfm`, heated by `power` watts, and blown out of
+// the back face. The UPS has no fans: it is a box that sheds `power` watts
+// from its front and back faces. The stack must be contiguous, bottom to top.
+rackLeft        2;      // x of the equipment's left side
+rackRight       19;     // ~17 in wide chassis
+rackFront       24;     // y of the front panels
+rackBack        48;     // ~24 in deep chassis
 
-lowVent  { min (0.2 -0.001 0);     max (1.0 0.001 0.025); }    // door undercut
+ups     { bottom  5.0;  top  8.5;  power  10; }             // 2U, passive
+nas     { bottom  8.5;  top 15.5;  power  80;  cfm  40; }   // 4U, 8 HDDs idle
+gaming  { bottom 15.5;  top 24.5;  power 270;  cfm 100; }   // 5U, 7700X + 7900 XTX
+// gaming: typical game load (EVE Online), measured GPU 150 W + CPU 55 W,
+// plus ~40 W board/RAM/fans, plus PSU losses. Flat out would be ~560 W.
+dev     { bottom 24.5;  top 31.5;  power 120;  cfm  50; }   // 4U, 5800X + 7900 XTX, idle-ish
+
+// ---- Openings --------------------------------------------------------------
+// Each is a box; closet wall faces whose centre is inside it become the
+// opening. `{ $closed; }` removes one.
+closed   { min (-99 -99 -99); max (-98 -98 -98); }
+
+// Gap under the (closed) door, 24 in door centred in the front wall.
+doorGap  { min (18 -0.1 0);    max (42 0.1 1.5); }
+
+// Window in the outside wall: 30 x 51 in, 28 in off the floor, 7 in from
+// the back wall.
+window   { min (59.9 36 28);   max (60.1 66 79); }
+
+// Extra passive opening to the house, e.g. a wall grille. None for now.
 highVent { $closed; }
 
-// Exhaust fan ducted out of the closet, in the ceiling above the rack's back.
-// It always exists as a patch; at 0 CFM it behaves like ceiling.
-fan      { min (0.5 0.9 2.399);    max (0.7 1.1 2.401); }
+// HVAC supply register, 5 x 11 in, in the middle of the ceiling. It is
+// ducted through the attic to the rest of the house's registers.
+// registerMode supply: the HVAC pushes acCFM of air at acTempF through it;
+//   acCFM 0 makes it solid ceiling.
+// registerMode open: a plain hole to the house, no duct friction. A best
+//   case for air looping closet -> duct -> office register -> door gap.
+acVent   { min (28 31 95.9);   max (33 42 96.1); }
+registerMode    supply;
+acCFM           0;
+acTempF         55;
+
+// Exhaust fan ducted out of the closet, in the ceiling behind the rack.
+// Always exists as a patch; 0 CFM makes it plain ceiling.
+fan      { min (5 50 95.9);    max (15 60 96.1); }
 fanCFM          0;
 
-// Height of the opening air is expected to *leave* by. The solver treats the
-// house air as standing still at this height, which keeps the chimney effect
-// between a low and a high vent correct. Irrelevant when a fan sets the flow.
+// Height (inches) of the opening air is expected to leave by. The solver
+// treats the house air as still at this height, which keeps the chimney
+// effect between a low and a high opening right.
 outflowHeight   0;

@@ -18,33 +18,21 @@ internalField   uniform (0 0 0);
 
 boundaryField
 {
-    "(walls|floor|rackWalls)"
+    ".*"
     {
         type            noSlip;
     }
 
-    // Air the rack's fans pull out of the room...
-    rackFront
-    {
-        type            flowRateOutletVelocity;
-        massFlowRate    constant $rackMassFlow;
-        rhoOutlet       $rhoAir;
-        value           $internalField;
-    }
-
-    // ...and blow back into it.
-    rackBack
-    {
-        type            flowRateInletVelocity;
-        massFlowRate    constant $rackMassFlow;
-        rhoInlet        $rhoAir;
-        value           $internalField;
-    }
-
-    "(lowVent|highVent)"
+    "(doorGap|highVent)"
     {
         type            pressureInletOutletVelocity;
         value           $internalField;
+    }
+
+    // HVAC supply or open hole, per registerMode (see closetDerived).
+    acVent
+    {
+        ${:acVentU}
     }
 
     fan
@@ -52,6 +40,50 @@ boundaryField
         type            flowRateOutletVelocity;
         massFlowRate    constant $fanMassFlow;
         rhoOutlet       $rhoAir;
+        value           $internalField;
+    }
+
+    // Each machine pulls air in its front and blows it out its back.
+    nasFront
+    {
+        type            flowRateOutletVelocity;
+        massFlowRate    constant $nasMassFlow;
+        rhoOutlet       $rhoAir;
+        value           $internalField;
+    }
+    nasBack
+    {
+        type            flowRateInletVelocity;
+        massFlowRate    constant $nasMassFlow;
+        rhoInlet        $rhoAir;
+        value           $internalField;
+    }
+    gamingFront
+    {
+        type            flowRateOutletVelocity;
+        massFlowRate    constant $gamingMassFlow;
+        rhoOutlet       $rhoAir;
+        value           $internalField;
+    }
+    gamingBack
+    {
+        type            flowRateInletVelocity;
+        massFlowRate    constant $gamingMassFlow;
+        rhoInlet        $rhoAir;
+        value           $internalField;
+    }
+    devFront
+    {
+        type            flowRateOutletVelocity;
+        massFlowRate    constant $devMassFlow;
+        rhoOutlet       $rhoAir;
+        value           $internalField;
+    }
+    devBack
+    {
+        type            flowRateInletVelocity;
+        massFlowRate    constant $devMassFlow;
+        rhoInlet        $rhoAir;
         value           $internalField;
     }
 }
