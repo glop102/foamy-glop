@@ -31,7 +31,7 @@ To turn that 3D view around yourself, `foamy-report --view runs/<scenario>`
 opens it in a window. For anything more, open `runs/<scenario>/case.foam`
 (written by the report) in ParaView (`nix shell nixpkgs#paraview`).
 
-The same closet is in the [scenario editor](../../editor/README.md) as
+The same closet is in the [scenario studio](../../editor/README.md) as
 `editor/examples/closet-*.json`, if you would rather move things around in 3D
 than edit `closetSettings`.
 

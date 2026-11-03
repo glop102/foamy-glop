@@ -6,6 +6,7 @@
 import { readFileSync, writeFileSync, mkdirSync, chmodSync, existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { exportCase } from "./src/export.js";
+import { upgrade } from "./src/model.js";
 
 const [input, outDir] = process.argv.slice(2);
 if (!input || !outDir) {
@@ -21,7 +22,7 @@ if (existsSync(outDir) && readdirSync(outDir).some((f) => !f.startsWith("."))) {
 
 let result;
 try {
-  result = exportCase(JSON.parse(readFileSync(input, "utf8")));
+  result = exportCase(upgrade(JSON.parse(readFileSync(input, "utf8"))));
 } catch (e) {
   console.error(e.message);
   process.exit(1);

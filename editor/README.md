@@ -1,88 +1,112 @@
-# Scenario editor
+# Scenario studio
 
-A 3D editor for room-cooling scenarios: lay out machines, vents, fans,
-windows and ducts in a box-shaped room, then export a runnable OpenFOAM case.
-No OpenFOAM dictionaries to write by hand.
+A 3D editor for airflow and cooling scenarios, plus a local runner. Build a
+space out of boxes, pipes and ducts, put machines, fans and openings in it,
+press Run, and watch it solve. No OpenFOAM dictionaries to write by hand.
 
 ```sh
-nix run .#editor          # serves the editor at http://localhost:8642/
+nix run .#studio          # http://localhost:8642/, runs go in ./runs/
 # or, inside `nix develop`, serve your working copy while you change it:
-foamy-editor editor
+foamy-studio --editor editor --export "node editor/cli.mjs"
 ```
 
-It is a static page (three.js from a CDN, no build step), so any static file
-server works too. It needs internet access to load three.js.
+The page also works as plain static files (any file server), without the
+Run button: Export downloads the case instead. It loads three.js from a CDN,
+so it needs internet access.
 
-## Using it
+## How a scenario is put together
 
-- **Add** things from the left. Click one in the view or the list to select
-  it; the right panel edits every number.
-- **Move** mode: drag the arrows. Things snap to the mesh grid and stay inside
-  the room. Wall things only slide along their wall.
-- **Resize** mode: drag the dots on each face (or edge, for wall things).
-- **Checks** lists problems as you go. Errors (red) block the export;
-  warnings (yellow) are things that will mesh but may not be what you meant.
-- **Save** downloads the scenario as JSON, **Open** loads one back, and the
-  page also autosaves to your browser.
-- **Export case** downloads `<name>.tar.gz`, a complete case directory:
+A scenario is an ordered list of items. Lengths are inches, temperatures °F;
+x runs left to right, y front to back, z up.
 
-  ```sh
-  tar xzf closet-back-fan.tar.gz
-  nix develop /path/to/foamy-glop
-  closet-back-fan/Allrun        # mesh, solve, and run foamy-report on it
-  ```
+| Group | Item | What it does |
+| --- | --- | --- |
+| Space | Air | Space air can be in: a box, a cylinder, or a path (a duct with bends). Overlapping air joins up, so two rooms and a doorway are three boxes, and a duct is just air in a pipe shape. An air item can give its own surfaces a construction, which is how a duct gets its insulation. |
+| Solids | Machine | A box that pulls `cfm` in its intake face, heats it by `power` and blows it out its exhaust face. At 0 W it is a box fan. |
+| | Passive heater | A fanless box giving off `power` from its surface. |
+| | Obstacle | A box or cylinder air goes around. |
+| Surfaces | Wall section | Surfaces inside its box get a construction: a window, an outside wall, a floor. |
+| | Opening | Surfaces inside its box open onto still air at an ambient temperature. |
+| | Wall fan | Surfaces inside its box move a fixed airflow in or out. |
+| Zones | Heat source | Adds `power` to the air inside it, with no solid: a person, a radiator. |
+| | Pressure loss | Resists flow through it: a grille or filter, with loss coefficient `K` over its length. |
 
-Keys: Del deletes, Ctrl+D duplicates, Ctrl+Z / Ctrl+Shift+Z undo and redo,
-Esc deselects, M / R switch between move and resize.
+Surface items are boxes that **catch the surfaces inside them**, wherever
+those are: a room's wall, the top of a cabinet, the end of a duct. Click
+one in the Add panel, then click a surface in the view and it is placed flat
+on it. Later items in the list win where they overlap (↑/↓ reorder).
+Everything else gets the **default surface** from the scenario settings.
 
-The same export runs without a browser:
+**Ambients** are the still air beyond surfaces: house, outside, attic and
+below-floor to start with, and you can add more. Constructions and openings
+point at one.
+
+Things snap to the mesh grid: `cellSize` cells, half as tall below
+`fineZ`. Cylinders and paths need to be at least two cells across.
+
+## Using the editor
+
+- Click an item in the view or the list to select it; the right panel has
+  every number. Nothing selected shows the scenario settings.
+- **Move** mode: drag the arrows. Surface items only slide along their
+  surface. For cylinders and paths, click a dot to move just that point.
+- **Resize** mode: drag the dots on each face of a box.
+- **Checks** lists problems as you go. Errors (red) block Run and Export;
+  warnings (yellow) will mesh but may not be what you meant.
+- **Save** and **Open** move scenario JSON in and out; the page also
+  autosaves in your browser. Ctrl+Z / Ctrl+Shift+Z undo and redo, Del
+  deletes, Ctrl+D duplicates, Esc deselects, M and R switch modes.
+
+## Running
+
+With the studio, **▶ Run** exports the scenario to `runs/<name>/` and runs
+its `Allrun` there. The Runs panel shows the phase, the iteration, machine
+intake temperatures and solver residuals as they go, then the report and
+pictures. **Open 3D view** opens the PyVista window on your desktop;
+**Load scenario** brings a run's scenario back into the editor. A run with
+the same name is replaced, so rename the scenario to keep both.
+
+Without the studio, Export downloads `<name>.tar.gz`:
 
 ```sh
-foamy-export editor/examples/closet-back-fan.json runs/closet-back-fan
+tar xzf two-rooms.tar.gz
+nix develop /path/to/foamy-glop
+two-rooms/Allrun        # mesh, solve, write report.txt and pictures
 ```
 
-## What you can place
+`foamy-export scenario.json <dir>` does the same export from the command
+line.
 
-All lengths are inches, temperatures °F. Standing in the doorway, x runs left
-to right, y from the front wall to the back, z up.
+## What the export does
 
-| Thing | What it does |
-| --- | --- |
-| Machine | A solid box. Pulls `cfm` in through its intake face, heats it by `power` and blows it out its exhaust face. |
-| Passive heater | A fanless box (UPS, switch) giving off `power` from all of its surface. |
-| Obstacle | A solid box air goes around: furniture, shelves, storage. |
-| Vent | An opening in a wall onto still air at the house, outside or attic temperature. |
-| Fan | A fixed airflow in or out through a wall. Blowing out needs a vent or duct for air to come back in. |
-| Wall panel | Part of a wall with its own construction, such as a window. |
-| Ceiling duct | A ceiling register ducted through the attic to a register beyond the room, opening onto the house. |
+`src/export.js` writes every file of a `buoyantSimpleFoam` case, with plain
+numbers, so each file can be read on its own:
 
-Each of the six walls has a construction (interior stud, exterior R-13,
-double glazing, ceiling under R-22, wood floor, slab, or adiabatic) and the
-air temperature beyond it.
+1. `blockMesh` makes one grid block over the bounding box of all the air.
+2. `topoSet` selects the air items' cells and removes the solids';
+   `subsetMesh` keeps just those. Every surface left is "surfaces", the
+   default construction.
+3. A second `topoSet` makes a face set for each patch, in priority order:
+   machine faces, then surface items (later first), heaters, the rest of
+   the solids' surfaces, then air items with their own construction.
+   `createPatch` turns them into patches.
+4. `Allrun` checks that every fan and machine face caught some faces (with
+   none, a fixed airflow has nowhere to go), then solves.
 
-## How a scenario becomes a case
-
-`src/export.js` writes every file of a `buoyantSimpleFoam` case from the
-scenario, with plain numbers and no `#include` chains, so the files can be
-read on their own. `scenario.json` goes in too, as the source to edit.
-
-The mesh is a box of `cellSize` cells, half as tall below `fineZ`. Things
-should sit on that grid; the editor snaps to it and the exporter rounds
-anything that doesn't. Each solid is cut out of the mesh, and the faces it
-leaves behind become its patches. Ducts add an attic slab above the ceiling
-for the duct to run through. The physics is the same as `cases/closet`: see
-"How it is modelled" in [its README](../cases/closet/README.md).
-
-`examples/` has the closet from `cases/closet` as scenarios, plus a small,
-coarse room that meshes and solves in seconds for trying changes out.
+The physics is the same as `cases/closet`; see "How it is modelled" in
+[its README](../cases/closet/README.md). `examples/` has that closet as
+scenarios, a small coarse room that solves in seconds, and two rooms joined
+by a doorway and a duct.
 
 ## Files
 
-- `index.html`, `style.css`, `src/app.js`: the editor page.
+- `index.html`, `style.css`, `src/app.js`: the editor.
+- `src/runs.js`: the Run button and Runs panel (only with the studio).
 - `src/model.js`: what a scenario is, defaults, snapping and checks.
 - `src/export.js`: scenario to OpenFOAM case.
 - `src/tar.js`: packs the case for download.
 - `cli.mjs`: the export from the command line (`foamy-export`).
+- `../tools/studio.py`: the studio server (`foamy-studio`).
 
 In the browser console, `editor.scenario` is the live scenario; change it
 and call `editor.commit()` to redraw.

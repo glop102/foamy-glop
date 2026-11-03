@@ -1,20 +1,23 @@
 // Scenario -> OpenFOAM case. exportCase() returns every file of a runnable
 // buoyantSimpleFoam case as { path: { content, mode } }; the editor packs them
-// into a .tar.gz and cli.mjs writes them to disk.
+// into a .tar.gz, and cli.mjs and the studio write them to disk.
 //
-// The mesh is built in inches (so topoSet boxes are the scenario's own
-// numbers) and scaled to metres at the end, as in cases/closet:
+// The mesh is built in inches (so topoSet uses the scenario's own numbers)
+// and scaled to metres at the end:
 //
-//   blockMesh       the room, plus an attic slab when there are ducts
-//   topoSet         cellSet "air": the room minus solids, plus duct cells
-//   subsetMesh      keep "air"; every face that exposes goes to ductWalls
-//   topoSet         face sets for each patch (dict topoSetDict.patches)
-//   createPatch     ceiling, vents, fans, machine faces... out of the walls
-//                   and ductWalls; what is left of ductWalls is the duct
+//   blockMesh       one grid block over all the air; its outside is "surfaces"
+//   topoSet         cellSet "air": the union of air items, minus solids
+//   subsetMesh      keep "air"; every face that exposes joins "surfaces"
+//   topoSet         a face set per patch, and a cell zone per zone item
+//   createPatch     moves each face set out of "surfaces" into its patch
+//
+// Faces go to the highest-priority claim on them: machine faces, then
+// stamps (later in the list first), heaters, other solid faces, air items
+// with their own surface (later first), and finally the default.
 
 import {
-  CONSTRUCTIONS, DUCT_CONSTRUCTION, WALLS, featureBox, faceBox, expand,
-  ductGeometry, solids, features, ducts, snapCoord, validate, roomSize,
+  CONSTRUCTIONS, bounds, pathPieces, faceBox, expand, centre, validate, isSolid, isStamp,
+  airBounds, snapCoord, thinAxis,
 } from "./model.js";
 
 const INCH = 0.0254;
@@ -27,7 +30,7 @@ const num = (x) => {
   return Object.is(r, -0) ? "0" : String(r);
 };
 const vec = (v) => `(${v.map(num).join(" ")})`;
-const box = (b) => `${vec(b.min)} ${vec(b.max)}`;
+const boxStr = (b) => `${vec(b.min)} ${vec(b.max)}`;
 const indent = (s, n) => s.split("\n").map((l) => (l ? " ".repeat(n) + l : l)).join("\n");
 
 function header(cls, object, location) {
@@ -48,192 +51,129 @@ FoamFile
 }
 const FOOTER = "\n// ************************************************************************* //\n";
 
-// Copy of the scenario with every edge on the mesh grid.
+// Copy of the scenario with box edges on the mesh grid. A stamp lying on
+// a surface is squeezed to 0.1 in either side of its middle instead, so it
+// catches the faces on that plane and not the edge of the next cell row
+// (whose face centres sit a quarter or half inch away).
 function snapped(s) {
   const out = structuredClone(s);
-  const r = out.room;
-  for (const o of out.objects) {
-    if (o.min) {
-      o.min = o.min.map((v, i) => snapCoord(r, i, v));
-      o.max = o.max.map((v, i) => snapCoord(r, i, v));
-    }
-    if (o.rect) {
-      const w = WALLS[o.wall];
-      o.rect = [snapCoord(r, w.u, o.rect[0]), snapCoord(r, w.v, o.rect[1]), snapCoord(r, w.u, o.rect[2]), snapCoord(r, w.v, o.rect[3])];
+  for (const o of out.items) {
+    const sh = o.shape;
+    if (sh?.type !== "box") continue;
+    const thin = isStamp(o) ? thinAxis(sh, out.mesh) : -1;
+    for (let i = 0; i < 3; i++) {
+      if (i === thin) {
+        const mid = (sh.min[i] + sh.max[i]) / 2;
+        sh.min[i] = mid - 0.1;
+        sh.max[i] = mid + 0.1;
+        continue;
+      }
+      sh.min[i] = snapCoord(out.mesh, i, sh.min[i]);
+      sh.max[i] = snapCoord(out.mesh, i, sh.max[i]);
     }
   }
   return out;
 }
 
-// ---- Plan: every number the dictionaries need ---------------------------------
+// ---- Plan -----------------------------------------------------------------------
 
 function plan(s) {
-  const r = s.room;
-  const c = r.cellSize;
-  const [W, D, H] = roomSize(r);
-  const ambientK = (a) => kelvin(s.temperatures[a]);
-
+  const by = (k) => s.items.filter((o) => o.kind === k);
   const p = {
-    s, r, c, W, D, H,
-    startT: kelvin(s.temperatures.start),
-    houseT: kelvin(s.temperatures.house),
-    ambientK,
-    solids: solids(s),
-    machines: s.objects.filter((o) => o.type === "machine"),
-    heaters: s.objects.filter((o) => o.type === "heater"),
-    features: features(s),
-    vents: s.objects.filter((o) => o.type === "vent"),
-    fans: s.objects.filter((o) => o.type === "fan"),
-    panels: s.objects.filter((o) => o.type === "panel"),
-    ducts: ducts(s).map((d) => ({ ...d, g: ductGeometry(r, d) })),
+    s,
+    mesh: s.mesh,
+    ambientK: (a) => kelvin(s.ambients[a].temp),
+    startT: kelvin(s.startTemp),
+    air: by("air"),
+    solids: s.items.filter(isSolid),
+    machines: by("machine"),
+    heaters: by("heater"),
+    stamps: s.items.filter(isStamp),
+    openings: by("opening"),
+    fans: by("fan"),
+    heats: by("heat"),
+    losses: by("loss"),
   };
 
-  // Attic slab: only when there are ducts. It covers the room's footprint
-  // and reaches out over every far register, on the mesh grid.
-  if (p.ducts.length) {
-    let [x0, y0, x1, y1] = [0, 0, W, D];
-    let top = H;
-    for (const d of p.ducts) {
-      const g = d.g;
-      const m = g.radius + 2;
-      x0 = Math.min(x0, g.far[0] - 2, g.farCentre[0] - m, g.centre[0] - m);
-      x1 = Math.max(x1, g.far[2] + 2, g.farCentre[0] + m, g.centre[0] + m);
-      y0 = Math.min(y0, g.far[1] - 2, g.farCentre[1] - m, g.centre[1] - m);
-      y1 = Math.max(y1, g.far[3] + 2, g.farCentre[1] + m, g.centre[1] + m);
-      top = Math.max(top, g.ductZ + g.radius + 2);
-    }
-    const down = (v) => Math.floor(v / c) * c;
-    const up = (v) => Math.ceil(v / c) * c;
-    p.attic = { x0: down(x0), y0: down(y0), x1: up(x1), y1: up(y1), top: H + up(top - H) };
-  }
+  // Thermal surfaces: the default, air items with their own, wall stamps.
+  p.thermal = [{ patch: "surfaces", construction: s.surfaces.construction, ambient: s.surfaces.ambient, label: "everything not set otherwise" }];
+  for (const o of p.air) if (o.surface) p.thermal.push({ patch: o.id, ...o.surface, label: `${o.id}'s own surfaces` });
+  for (const o of by("wall")) p.thermal.push({ patch: o.id, construction: o.construction, ambient: o.ambient, label: o.id });
 
-  // Thermal walls: the room's six, then panels.
-  p.walls = Object.entries(WALLS).map(([key, w]) => ({
-    patch: w.patch,
-    key,
-    construction: CONSTRUCTIONS[s.walls[key].construction],
-    ambient: s.walls[key].ambient,
-  }));
-  for (const o of p.panels) p.walls.push({ patch: o.id, construction: CONSTRUCTIONS[o.construction], ambient: o.ambient });
-  if (p.ducts.length) p.walls.push({ patch: "ductWalls", construction: DUCT_CONSTRUCTION, ambient: "attic" });
-
-  // Everything a wall function goes on.
-  p.wallTypePatches = [
-    ...p.walls.map((w) => w.patch),
-    ...p.heaters.map((o) => o.id),
-    "solidWalls",
-  ];
-  if (!p.ducts.length) p.wallTypePatches.push("ductWalls");
-
-  // Open to still air at a fixed pressure: vents and far registers.
-  p.open = [
-    ...p.vents.map((o) => ({ patch: o.id, ambient: o.ambient })),
-    ...p.ducts.map((d) => ({ patch: d.id + "Far", ambient: d.ambient })),
-  ];
-
-  // hRef: the height air is expected to leave by.
+  p.wallTypes = [...p.thermal.map((t) => t.patch), ...p.heaters.map((o) => o.id), "solidWalls"];
   p.outflowHeight = s.solver.outflowHeight ?? defaultOutflowHeight(p);
   return p;
 }
 
 function defaultOutflowHeight(p) {
-  if (p.ducts.length) return p.H;
   let best = null;
-  for (const v of p.vents) {
-    const b = featureBox(p.r, v);
-    const z = (b.min[2] + b.max[2]) / 2;
+  for (const o of p.openings) {
+    const z = centre(o.shape)[2];
     if (best === null || z > best) best = z;
   }
-  return best ?? p.H / 2;
+  const b = airBounds(p.s);
+  return best ?? (b.min[2] + b.max[2]) / 2;
 }
 
 // ---- blockMesh ------------------------------------------------------------------
 
-function blockMeshDict(p) {
-  const { W, D, H, c, r } = p;
-  const verts = [];
-  const index = new Map();
-  const v = (x, y, z) => {
-    const k = `${x},${y},${z}`;
-    if (!index.has(k)) {
-      index.set(k, verts.length);
-      verts.push([x, y, z]);
-    }
-    return index.get(k);
-  };
-  const hex = (x0, x1, y0, y1, z0, z1) => [
-    v(x0, y0, z0), v(x1, y0, z0), v(x1, y1, z0), v(x0, y1, z0),
-    v(x0, y0, z1), v(x1, y0, z1), v(x1, y1, z1), v(x0, y1, z1),
-  ];
-  const n = (len) => Math.max(1, Math.round(len / c));
-
-  const room = hex(0, W, 0, D, 0, H);
-  const blocks = [];
-  let grading = "simpleGrading (1 1 1)";
-  let nz = n(H);
-  if (r.fineZ > 0 && r.fineZ < H) {
-    const nzFine = Math.round((2 * r.fineZ) / c);
-    const nzCoarse = n(H - r.fineZ);
-    nz = nzFine + nzCoarse;
-    grading = `simpleGrading (1 1 ((${num(r.fineZ)} ${nzFine} 1) (${num(H - r.fineZ)} ${nzCoarse} 1)))`;
-  }
-  blocks.push(`// the room: half-height cells below ${num(r.fineZ)} in\n    hex (${room.join(" ")}) (${n(W)} ${n(D)} ${nz})\n    ${grading}`);
-
-  // Faces of a hex: bottom (0 3 2 1), etc., all pointing out of the block.
-  const bottom = (h) => [h[0], h[3], h[2], h[1]];
-  const boundary = {
-    floor: [bottom(room)],
-    leftWall: [[room[0], room[4], room[7], room[3]]],
-    rightWall: [[room[1], room[2], room[6], room[5]]],
-    frontWall: [[room[0], room[1], room[5], room[4]]],
-    backWall: [[room[3], room[7], room[6], room[2]]],
-  };
-  const remote = [];
-
-  if (p.attic) {
-    const a = p.attic;
-    const xs = [...new Set([a.x0, 0, W, a.x1])].sort((i, j) => i - j);
-    const ys = [...new Set([a.y0, 0, D, a.y1])].sort((i, j) => i - j);
-    for (let i = 0; i + 1 < xs.length; i++)
-      for (let j = 0; j + 1 < ys.length; j++) {
-        const [x0, x1, y0, y1] = [xs[i], xs[i + 1], ys[j], ys[j + 1]];
-        const h = hex(x0, x1, y0, y1, H, a.top);
-        const overRoom = x0 >= 0 && x1 <= W && y0 >= 0 && y1 <= D;
-        blocks.push(`// attic${overRoom ? " over the room" : ""}\n    hex (${h.join(" ")}) (${n(x1 - x0)} ${n(y1 - y0)} ${n(a.top - H)}) simpleGrading (1 1 1)`);
-        if (!overRoom) remote.push(bottom(h));
-      }
+// The grid block: all the air, out to whole cells (half cells in z below
+// fineZ), lined up with the grid the editor snaps to.
+function grid(p) {
+  const c = p.mesh.cellSize;
+  const b = airBounds(p.s);
+  const down = (v, st) => Math.floor(v / st + 1e-9) * st;
+  const up = (v, st) => Math.ceil(v / st - 1e-9) * st;
+  const x0 = down(b.min[0], c), x1 = up(b.max[0], c);
+  const y0 = down(b.min[1], c), y1 = up(b.max[1], c);
+  const fz = p.mesh.fineZ;
+  let z0, z1, zSegments;
+  if (fz > b.min[2] && fz < b.max[2]) {
+    z0 = down(b.min[2], c / 2);
+    z1 = fz + up(b.max[2] - fz, c);
+    zSegments = [[fz - z0, Math.round((fz - z0) / (c / 2))], [z1 - fz, Math.round((z1 - fz) / c)]];
+  } else if (fz >= b.max[2]) {
+    z0 = down(b.min[2], c / 2);
+    z1 = up(b.max[2], c / 2);
+    zSegments = [[z1 - z0, Math.round((z1 - z0) / (c / 2))]];
   } else {
-    boundary.ceiling = [[room[4], room[5], room[6], room[7]]];
+    z0 = down(b.min[2], c);
+    z1 = up(b.max[2], c);
+    zSegments = [[z1 - z0, Math.round((z1 - z0) / c)]];
   }
+  return { min: [x0, y0, z0], max: [x1, y1, z1], n: [Math.round((x1 - x0) / c), Math.round((y1 - y0) / c)], zSegments };
+}
 
-  const faces = (fs) => fs.map((f) => `(${f.join(" ")})`).join(" ");
-  const patchLines = Object.entries(boundary).map(([name, fs]) => `    ${name.padEnd(10)} { type wall; faces (${faces(fs)}); }`);
-  if (remote.length)
-    patchLines.push(`\n    // Underside of the attic beyond the room. Only the far registers'\n    // boots survive subsetMesh; createPatch names them.\n    remoteRegisters { type patch; faces (${faces(remote)}); }`);
-  patchLines.push(`\n    // Filled by subsetMesh with every face it exposes; createPatch takes\n    // out the ceiling and the solids' faces, leaving the duct walls.\n    ductWalls  { type wall; faces (); }`);
-
+function blockMeshDict(p) {
+  const g = grid(p);
+  const [x0, y0, z0] = g.min;
+  const [x1, y1, z1] = g.max;
+  const nz = g.zSegments.reduce((a, s) => a + s[1], 0);
+  const zg = g.zSegments.length === 1 ? "1" : `(${g.zSegments.map(([len, n]) => `(${num(len)} ${n} 1)`).join(" ")})`;
   return (
     header("dictionary", "blockMeshDict") +
     `// In inches; Allrun scales the mesh to metres once the patches are made.
+// One block over all the air. topoSet and subsetMesh cut it down.
 
 vertices
 (
-${verts.map((x, i) => `    ${vec(x).padEnd(24)} // ${i}`).join("\n")}
+    ${vec([x0, y0, z0])} ${vec([x1, y0, z0])} ${vec([x1, y1, z0])} ${vec([x0, y1, z0])}
+    ${vec([x0, y0, z1])} ${vec([x1, y0, z1])} ${vec([x1, y1, z1])} ${vec([x0, y1, z1])}
 );
 
 blocks
 (
-    ${blocks.join("\n\n    ")}
+    hex (0 1 2 3 4 5 6 7) (${g.n[0]} ${g.n[1]} ${nz}) simpleGrading (1 1 ${zg})
 );
 
 boundary
 (
-${patchLines.join("\n")}
 );
 
+// Everything starts out as "surfaces", the default construction.
 defaultPatch
 {
-    name    attic;
+    name    surfaces;
     type    wall;
 }
 ` + FOOTER
@@ -244,109 +184,75 @@ defaultPatch
 
 const action = (name, type, act, body) =>
   `    {\n        name    ${name};\n        type    ${type};\n        action  ${act};\n${indent(body, 8)}\n    }`;
-const boxesSrc = (bs, src = "boxToCell") =>
-  bs.length === 1 ? `source  ${src};\nbox     ${box(bs[0])};` : `source  ${src};\nboxes\n(\n${bs.map((b) => "    " + box(b)).join("\n")}\n);`;
-const setsSrc = (names) => `source  faceToFace;\nsets    (${names.join(" ")});`;
-const patchSrc = (names) => `source  patchToFace;\npatches (${names.join(" ")});`;
 
-function bootBoxes(p, d, overlap) {
-  const top = d.g.bootTop + (overlap ? 1 : 0);
-  const [x0, y0, x1, y1] = d.g.register;
-  const [f0, g0, f1, g1] = d.g.far;
-  return [
-    { min: [x0, y0, p.H], max: [x1, y1, top] },
-    { min: [f0, g0, p.H], max: [f1, g1, top] },
-  ];
+// Sources selecting cells (or faces) inside a shape.
+function shapeSources(shape, kind) {
+  if (shape.type === "box") return [`source  boxTo${kind};\nbox     ${boxStr(shape)};`];
+  if (shape.type === "cylinder")
+    return [`source  cylinderTo${kind};\npoint1  ${vec(shape.p1)};\npoint2  ${vec(shape.p2)};\nradius  ${num(shape.radius)};`];
+  return pathPieces(shape).flatMap((piece) => shapeSources(piece, kind));
 }
+
+// Actions building a set from a shape: the first piece makes it, the rest add.
+function shapeSet(name, type, shape, kind, comment, first = "new") {
+  return shapeSources(shape, kind).map((src, i) =>
+    action(name, type, i === 0 ? first : first === "subtract" ? "subtract" : "add", (i === 0 && comment ? `// ${comment}\n` : "") + src),
+  );
+}
+
+const setsSrc = (names) => `source  faceToFace;\nsets    (${names.join(" ")});`;
+const onSurfaces = "source  patchToFace;\npatches (surfaces);";
 
 function topoSetDict(p) {
   const acts = [];
-  acts.push(action("air", "cellSet", "new", boxesSrc([{ min: [-1e4, -1e4, -1e4], max: [1e4, 1e4, p.H] }]) + "\n// everything below the ceiling"));
-  if (p.solids.length)
-    acts.push(action("air", "cellSet", "subtract", `// ${p.solids.map((o) => o.id).join(", ")}\n` + boxesSrc(p.solids)));
-  for (const d of p.ducts) {
-    acts.push(action("air", "cellSet", "add", `// ${d.id}: register boots\n` + boxesSrc(bootBoxes(p, d, true))));
-    const g = d.g;
-    acts.push(
-      action("air", "cellSet", "add",
-        `// ${d.id}: the duct\nsource  cylinderToCell;\npoint1  ${vec([...g.centre, g.ductZ])};\npoint2  ${vec([...g.farCentre, g.ductZ])};\nradius  ${num(g.radius)};`),
-    );
-  }
-  return header("dictionary", "topoSetDict") + "// The cells kept by subsetMesh.\nactions\n(\n" + acts.join("\n") + "\n);\n" + FOOTER;
+  p.air.forEach((o, i) => acts.push(...shapeSet("air", "cellSet", o.shape, "Cell", `air: ${o.id}`, i === 0 ? "new" : "add")));
+  for (const o of p.solids) acts.push(...shapeSet("air", "cellSet", o.shape, "Cell", `solid: ${o.id}`, "subtract"));
+  return header("dictionary", "topoSetDict") + "// The cells kept by subsetMesh: all the air, minus the solids.\nactions\n(\n" + acts.join("\n") + "\n);\n" + FOOTER;
 }
 
+// Face sets in priority order, each minus everything claimed before it.
 function topoSetPatches(p) {
   const acts = [];
-  const created = []; // [{ name, type }] for createPatch, in order
-  const roomWalls = Object.values(WALLS).map((w) => w.patch).filter((n) => n !== "ceiling" || !p.attic);
+  const created = []; // [{ name, type }]
+  const claimed = [];
+  const claim = (name, type, build, comment) => {
+    acts.push(`\n    // ${comment}`);
+    acts.push(...build);
+    acts.push(action(name, "faceSet", "subset", onSurfaces));
+    if (claimed.length) acts.push(action(name, "faceSet", "subtract", setsSrc([...claimed])));
+    claimed.push(name);
+    created.push({ name, type });
+  };
 
-  for (const d of p.ducts) {
-    const zone = d.id + "Grille";
-    acts.push(action(zone, "cellSet", "new", `// ${d.id}: the grilles' pressure loss lives in the boots\n` + boxesSrc(bootBoxes(p, d, false))));
-    acts.push(action(zone, "cellZoneSet", "new", `source  setToCellZone;\nset     ${zone};`));
-  }
+  for (const o of p.machines)
+    for (const [suffix, face] of [["In", o.intake], ["Out", o.exhaust]])
+      claim(o.id + suffix, "patch", shapeSet(o.id + suffix, "faceSet", { type: "box", ...faceBox(o.shape, face) }, "Face"), `${o.id}: ${suffix === "In" ? "intake" : "exhaust"} face (${face})`);
 
-  if (p.attic) {
-    const plane = { min: [-0.1, -0.1, p.H - 0.1], max: [p.W + 0.1, p.D + 0.1, p.H + 0.1] };
-    acts.push(action("ceiling", "faceSet", "new", "// faces exposed where the attic was cut away\n" + boxesSrc([plane], "boxToFace")));
-    acts.push(action("ceiling", "faceSet", "subset", patchSrc(["ductWalls"])));
-    created.push({ name: "ceiling", type: "wall" });
-  }
+  for (const o of [...p.stamps].reverse())
+    claim(o.id, o.kind === "wall" ? "wall" : "patch", shapeSet(o.id, "faceSet", o.shape, "Face"), `${o.kind} ${o.id}`);
 
-  // Anything on a wall takes faces only from the walls, and only ones no
-  // earlier feature took.
-  if (p.features.length) {
-    acts.push(action("walls", "faceSet", "new", patchSrc(roomWalls)));
-    if (p.attic) acts.push(action("walls", "faceSet", "add", setsSrc(["ceiling"])));
-    const done = [];
-    for (const o of p.features) {
-      acts.push(action(o.id, "faceSet", "new", `// ${o.type} on the ${o.wall} wall\n` + boxesSrc([featureBox(p.r, o)], "boxToFace")));
-      acts.push(action(o.id, "faceSet", "subset", setsSrc(["walls"])));
-      if (done.length) acts.push(action(o.id, "faceSet", "subtract", setsSrc(done)));
-      done.push(o.id);
-      created.push({ name: o.id, type: o.type === "panel" ? "wall" : "patch" });
-    }
-    if (p.attic) acts.push(action("ceiling", "faceSet", "subtract", setsSrc(done)));
-  }
+  for (const o of p.heaters) claim(o.id, "wall", shapeSet(o.id, "faceSet", { type: "box", ...expand(o.shape, 0.1) }, "Face"), `heater ${o.id}: its surface`);
 
-  // Solids' faces come out of ductWalls, where subsetMesh put them.
-  const solidSets = [];
-  for (const o of p.machines) {
-    for (const [suffix, face] of [["In", o.intake], ["Out", o.exhaust]]) {
-      const name = o.id + suffix;
-      acts.push(action(name, "faceSet", "new", `// ${o.id}: ${suffix === "In" ? "intake" : "exhaust"} face (${face})\n` + boxesSrc([faceBox(o, face)], "boxToFace")));
-      acts.push(action(name, "faceSet", "subset", patchSrc(["ductWalls"])));
-      if (solidSets.length) acts.push(action(name, "faceSet", "subtract", setsSrc([...solidSets])));
-      solidSets.push(name);
-      created.push({ name, type: "patch" });
-    }
-  }
-  for (const o of p.heaters) {
-    acts.push(action(o.id, "faceSet", "new", `// ${o.id}: all its faces\n` + boxesSrc([expand(o, 0.1)], "boxToFace")));
-    acts.push(action(o.id, "faceSet", "subset", patchSrc(["ductWalls"])));
-    if (solidSets.length) acts.push(action(o.id, "faceSet", "subtract", setsSrc([...solidSets])));
-    solidSets.push(o.id);
-    created.push({ name: o.id, type: "wall" });
-  }
-  if (p.solids.length) {
-    acts.push(action("solidWalls", "faceSet", "new", "// the rest of every solid's surface\n" + boxesSrc(p.solids.map((o) => expand(o, 0.1)), "boxToFace")));
-    acts.push(action("solidWalls", "faceSet", "subset", patchSrc(["ductWalls"])));
-    if (solidSets.length) acts.push(action("solidWalls", "faceSet", "subtract", setsSrc(solidSets)));
-  } else {
-    const nowhere = { min: [-1e4, -1e4, -1e4], max: [-1e4 + 1, -1e4 + 1, -1e4 + 1] };
-    acts.push(action("solidWalls", "faceSet", "new", "// no solids: an empty set\n" + boxesSrc([nowhere], "boxToFace")));
-  }
-  created.push({ name: "solidWalls", type: "wall" });
+  const solidShapes = p.solids.map((o) => (o.shape.type === "box" ? { type: "box", ...expand(o.shape, 0.1) } : { ...o.shape, radius: o.shape.radius + 0.1 }));
+  const nowhere = { type: "box", min: [-1e5, -1e5, -1e5], max: [-1e5 + 1, -1e5 + 1, -1e5 + 1] };
+  const solidBuild = (solidShapes.length ? solidShapes : [nowhere]).flatMap((sh, i) => shapeSet("solidWalls", "faceSet", sh, "Face", null, i === 0 ? "new" : "add"));
+  claim("solidWalls", "wall", solidBuild, "the rest of every solid's surface (no heat through it)");
 
-  for (const d of p.ducts) {
-    const [f0, g0, f1, g1] = d.g.far;
-    const name = d.id + "Far";
-    acts.push(action(name, "faceSet", "new", `// ${d.id}: far register\n` + boxesSrc([{ min: [f0, g0, p.H - 0.1], max: [f1, g1, p.H + 0.1] }], "boxToFace")));
-    acts.push(action(name, "faceSet", "subset", patchSrc(["remoteRegisters"])));
-    created.push({ name, type: "patch" });
+  // An air item's own surfaces: the boundary faces of its cells.
+  for (const o of [...p.air].reverse().filter((x) => x.surface)) {
+    const cells = o.id + "Cells";
+    const build = [...shapeSet(cells, "cellSet", o.shape, "Cell"), action(o.id, "faceSet", "new", `source  cellToFace;\nset     ${cells};\noption  all;`)];
+    claim(o.id, "wall", build, `${o.id}: surfaces of its own air`);
   }
 
-  const dict = header("dictionary", "topoSetDict.patches") + "// Face sets that createPatch turns into patches.\nactions\n(\n" + acts.join("\n") + "\n);\n" + FOOTER;
+  // Cell zones for zone items.
+  for (const o of [...p.heats, ...p.losses]) {
+    acts.push(`\n    // ${o.kind === "heat" ? "heat source" : "pressure loss"} ${o.id}`);
+    acts.push(...shapeSet(o.id, "cellSet", o.shape, "Cell"));
+    acts.push(action(o.id, "cellZoneSet", "new", `source  setToCellZone;\nset     ${o.id};`));
+  }
+
+  const dict = header("dictionary", "topoSetDict.patches") + "// Face sets that createPatch turns into patches, and cell zones.\nactions\n(" + acts.join("\n") + "\n);\n" + FOOTER;
   return { dict, created };
 }
 
@@ -368,7 +274,7 @@ ${created.map((c) => `    { name ${(c.name + ";").padEnd(w + 1)} patchInfo { typ
 // ---- Fields ---------------------------------------------------------------------
 
 const massFlow = (cfm) => cfm * CFM_TO_KGS;
-const entry = (name, body) => `    ${name.includes("|") || name.includes("*") ? `"${name}"` : name}\n    {\n${indent(body, 8)}\n    }`;
+const entry = (name, body) => `    ${/[|*]/.test(name) ? `"${name}"` : name}\n    {\n${indent(body, 8)}\n    }`;
 const alt = (names) => (names.length === 1 ? names[0] : `(${names.join("|")})`);
 
 function field(cls, object, dims, internal, entries) {
@@ -386,12 +292,12 @@ ${entries.filter(Boolean).join("\n\n")}
   );
 }
 
-function wallT(p, w) {
-  const c = w.construction;
-  if (!c.ambient || !w.ambient) return "type            zeroGradient;";
+function wallT(p, t) {
+  const c = CONSTRUCTIONS[t.construction];
+  if (!c.ambient || !t.ambient) return "type            zeroGradient;";
   return `type            externalWallHeatFluxTemperature;
 mode            coefficient;
-Ta              constant ${num(p.ambientK(w.ambient))};
+Ta              constant ${num(p.ambientK(t.ambient))};
 h               uniform ${num(c.h)};
 thicknessLayers (${c.layers.map((l) => num(l[0])).join(" ")});
 kappaLayers     (${c.layers.map((l) => num(l[1])).join(" ")});
@@ -401,12 +307,15 @@ value           $internalField;`;
 
 function fieldT(p) {
   const e = [entry(".*", "type            zeroGradient;")];
-  for (const w of p.walls) e.push(`    // ${w.construction.label ?? "insulated duct"}${w.ambient ? `, ${w.ambient} beyond` : ""}\n` + entry(w.patch, wallT(p, w)));
+  for (const t of p.thermal) {
+    const c = CONSTRUCTIONS[t.construction];
+    const beyond = t.ambient && c.ambient ? `, ${p.s.ambients[t.ambient].label} beyond` : "";
+    e.push(`    // ${t.label}: ${c.label}${beyond}\n` + entry(t.patch, wallT(p, t)));
+  }
   for (const o of p.heaters)
     e.push(`    // ${o.id}: ${num(o.power)} W from its surface\n` + entry(o.id, `type            externalWallHeatFluxTemperature;\nmode            power;\nQ               constant ${num(o.power)};\nkappaMethod     fluidThermo;\nvalue           $internalField;`));
-  for (const o of p.open) e.push(entry(o.patch, `type            inletOutlet;\ninletValue      uniform ${num(p.ambientK(o.ambient))};\nvalue           $internalField;`));
-  for (const o of p.fans)
-    if (o.direction === "in") e.push(entry(o.id, `type            fixedValue;\nvalue           uniform ${num(p.ambientK(o.ambient))};`));
+  for (const o of p.openings) e.push(entry(o.id, `type            inletOutlet;\ninletValue      uniform ${num(p.ambientK(o.ambient))};\nvalue           $internalField;`));
+  for (const o of p.fans.filter((f) => f.direction === "in")) e.push(entry(o.id, `type            fixedValue;\nvalue           uniform ${num(p.ambientK(o.ambient))};`));
   for (const o of p.machines)
     e.push(
       `    // ${o.id}: what came in its intake, plus ${num(o.power)} W\n` +
@@ -417,7 +326,7 @@ function fieldT(p) {
 
 function fieldU(p) {
   const e = [entry(".*", "type            noSlip;")];
-  if (p.open.length) e.push(entry(alt(p.open.map((o) => o.patch)), "type            pressureInletOutletVelocity;\nvalue           $internalField;"));
+  if (p.openings.length) e.push(entry(alt(p.openings.map((o) => o.id)), "type            pressureInletOutletVelocity;\nvalue           $internalField;"));
   const outlet = (cfm) => `type            flowRateOutletVelocity;\nmassFlowRate    constant ${num(massFlow(cfm))};\nrhoOutlet       ${RHO};\nvalue           $internalField;`;
   const inlet = (cfm) => `type            flowRateInletVelocity;\nmassFlowRate    constant ${num(massFlow(cfm))};\nrhoInlet        ${RHO};\nvalue           $internalField;`;
   for (const o of p.fans) e.push(`    // ${o.id}: ${num(o.cfm)} CFM ${o.direction}\n` + entry(o.id, o.direction === "in" ? inlet(o.cfm) : outlet(o.cfm)));
@@ -430,78 +339,59 @@ function fieldU(p) {
 
 function fieldPrgh(p) {
   const e = [entry(".*", "type            fixedFluxPressure;\nvalue           $internalField;")];
-  if (p.open.length) e.push("    // Openings see a large room of still air.\n" + entry(alt(p.open.map((o) => o.patch)), "type            totalPressure;\np0              uniform 1e5;\nvalue           $internalField;"));
+  if (p.openings.length) e.push("    // Openings see a large room of still air.\n" + entry(alt(p.openings.map((o) => o.id)), "type            totalPressure;\np0              uniform 1e5;\nvalue           $internalField;"));
   return field("volScalarField", "p_rgh", "[1 -1 -2 0 0 0 0]", "1e5", e);
 }
 
-function fieldP() {
-  return field("volScalarField", "p", "[1 -1 -2 0 0 0 0]", "1e5", [entry(".*", "type            calculated;\nvalue           $internalField;")]);
-}
+const fieldP = () => field("volScalarField", "p", "[1 -1 -2 0 0 0 0]", "1e5", [entry(".*", "type            calculated;\nvalue           $internalField;")]);
 
 function turbulence(p, name, dims, internal, wallFn, inflow) {
   const e = [entry(".*", "type            inletOutlet;\ninletValue      $internalField;\nvalue           $internalField;")];
-  e.push(entry(alt([...p.wallTypePatches, "attic"]), `type            ${wallFn};\nvalue           $internalField;`));
+  e.push(entry(alt(p.wallTypes), `type            ${wallFn};\nvalue           $internalField;`));
   const blown = [...p.machines.map((o) => o.id + "Out"), ...p.fans.filter((o) => o.direction === "in").map((o) => o.id)];
   if (blown.length) e.push("    // Air blown in by a fan arrives a little turbulent.\n" + entry(alt(blown), `type            inletOutlet;\ninletValue      uniform ${inflow};\nvalue           $internalField;`));
   return field("volScalarField", name, dims, internal, e);
 }
 
-function wallOnly(p, name, dims, wallBody) {
-  return field("volScalarField", name, dims, "0", [
-    entry(".*", "type            calculated;\nvalue           $internalField;"),
-    entry(alt([...p.wallTypePatches, "attic"]), wallBody),
-  ]);
-}
+const wallOnly = (p, name, dims, body) =>
+  field("volScalarField", name, dims, "0", [entry(".*", "type            calculated;\nvalue           $internalField;"), entry(alt(p.wallTypes), body)]);
 
 // ---- system/ and constant/ ----------------------------------------------------------
 
-function controlDict(p) {
-  const fo = [];
-  const first = p.machines[0];
-  for (const o of p.machines) {
-    if (o === first)
-      fo.push(`    // Air going into each machine: the numbers that matter.
-    ${o.id}Intake
-    {
-        type            surfaceFieldValue;
-        libs            (fieldFunctionObjects);
-        regionType      patch;
-        name            ${o.id}In;
-        operation       areaAverage;
-        fields          (T);
-        writeFields     false;
-        writeControl    timeStep;
-        writeInterval   10;
-        log             false;
-    }`);
-    else fo.push(`    ${o.id}Intake { $${first.id}Intake; name ${o.id}In; }`);
-    fo.push(`    ${o.id}IntakeMax { $${o.id}Intake; operation max; }`);
-    fo.push(`    ${o.id}Exhaust { $${o.id}Intake; name ${o.id}Out; }`);
-  }
-  const flows = [...p.vents.map((o) => [o.id, o.id]), ...p.fans.map((o) => [o.id, o.id]), ...p.ducts.map((d) => [d.id, d.id + "Far"])];
-  if (flows.length) fo.push("\n    // Mass flow through each opening, kg/s, positive out of the room.");
-  for (const [id, patch] of flows)
-    fo.push(`    ${id}Flow
+function surfaceFO(name, patch, operation, fields, extra = "") {
+  return `    ${name}
     {
         type            surfaceFieldValue;
         libs            (fieldFunctionObjects);
         regionType      patch;
         name            ${patch};
-        operation       sum;
-        fields          (phi);
+        operation       ${operation};
+        fields          (${fields});
         writeFields     false;
         writeControl    timeStep;
         writeInterval   10;
-        log             false;
-        errors          warn;
-    }`);
+        log             false;${extra}
+    }`;
+}
+
+function controlDict(p) {
+  const fo = [];
+  if (p.machines.length) fo.push("    // Air going into each machine: the numbers that matter.");
+  for (const o of p.machines) {
+    fo.push(surfaceFO(o.id + "Intake", o.id + "In", "areaAverage", "T"));
+    fo.push(`    ${o.id}IntakeMax { $${o.id}Intake; operation max; }`);
+    fo.push(`    ${o.id}Exhaust { $${o.id}Intake; name ${o.id}Out; }`);
+  }
+  const flows = [...p.openings, ...p.fans];
+  if (flows.length) fo.push("\n    // Mass flow through each opening and fan, kg/s, positive out.");
+  for (const o of flows) fo.push(surfaceFO(o.id + "Flow", o.id, "sum", "phi", "\n        errors          warn;"));
   fo.push(`
-    // Heat conducted out through each wall, W.
+    // Heat conducted out through each construction, W.
     wallHeat
     {
         type            wallHeatFlux;
         libs            (fieldFunctionObjects);
-        patches         (${p.walls.map((w) => w.patch).join(" ")});
+        patches         (${p.thermal.map((t) => t.patch).join(" ")});
         writeFields     false;
         writeControl    timeStep;
         writeInterval   100;
@@ -521,18 +411,18 @@ function controlDict(p) {
     }
     airMax { $air; operation max; }`);
 
-  // Plot planes through the hottest machine (or the middle of the room),
-  // nudged off cell faces; in metres since the solver runs after scaling.
-  const hot = [...p.machines, ...p.heaters].sort((a, b) => b.power - a.power)[0];
-  const centre = hot ? [0, 1, 2].map((i) => (hot.min[i] + hot.max[i]) / 2) : [p.W / 2, p.D / 2, p.H / 2];
-  const frontY = hot && hot.min[1] > 6 ? hot.min[1] / 2 : centre[1];
+  // Plot planes through the biggest heat (or the middle of the air), nudged
+  // off cell faces. Metres, since the solver runs after scaling.
+  const hot = [...p.machines, ...p.heaters, ...p.heats].sort((a, b) => b.power - a.power)[0];
+  const ab = airBounds(p.s);
+  const c = hot ? centre(bounds(hot.shape)) : centre(ab);
+  const hotMinY = hot ? bounds(hot.shape).min[1] : 0;
+  const frontY = hot && hotMinY - ab.min[1] > 6 ? (ab.min[1] + hotMinY) / 2 : c[1];
   const cuts = {
-    side: [[centre[0] + 0.3, 0, 0], [1, 0, 0]],
+    side: [[c[0] + 0.3, 0, 0], [1, 0, 0]],
     front: [[0, frontY + 0.3, 0], [0, 1, 0]],
-    top: [[0, 0, centre[2] + 0.1], [0, 0, 1]],
+    top: [[0, 0, c[2] + 0.1], [0, 0, 1]],
   };
-  const d = p.ducts[0];
-  if (d && Math.abs(d.g.centre[0] - d.g.farCentre[0]) < 1e-6) cuts.duct = [[d.g.centre[0] + 0.3, 0, 0], [1, 0, 0]];
   fo.push(`
     cuts
     {
@@ -584,23 +474,32 @@ ${fo.join("\n")}
   );
 }
 
+// Length of a zone along the way air flows through it.
+function zoneLength(o) {
+  if (o.shape.type === "cylinder") return Math.hypot(...o.shape.p2.map((v, i) => v - o.shape.p1[i]));
+  const i = { x: 0, y: 1, z: 2 }[o.axis ?? "z"];
+  return o.shape.max[i] - o.shape.min[i];
+}
+
 function fvOptions(p) {
-  const grilles = p.ducts.map(
-    (d) => `// ${d.id}: grille loss K = ${num(d.grilleK)} over each boot's height.
-${d.id}Grille
+  const parts = [];
+  for (const o of p.losses) {
+    const f = o.K / (zoneLength(o) * INCH);
+    parts.push(`// ${o.id}: loss coefficient K = ${num(o.K)} over ${num(zoneLength(o))} in.
+${o.id}
 {
     type            explicitPorositySource;
 
     explicitPorositySourceCoeffs
     {
         selectionMode   cellZone;
-        cellZone        ${d.id}Grille;
+        cellZone        ${o.id};
         type            DarcyForchheimer;
 
         DarcyForchheimerCoeffs
         {
             d   (0 0 0);
-            f   ${vec([0, 1, 2].map(() => d.grilleK / (d.bootHeight * INCH)))};
+            f   ${vec([f, f, f])};
 
             coordinateSystem
             {
@@ -611,11 +510,26 @@ ${d.id}Grille
         }
     }
 }
-`,
-  );
+`);
+  }
+  for (const o of p.heats)
+    parts.push(`// ${o.id}: ${num(o.power)} W into the air inside it.
+${o.id}
+{
+    type            scalarSemiImplicitSource;
+    selectionMode   cellZone;
+    cellZone        ${o.id};
+    volumeMode      absolute;
+
+    sources
+    {
+        h           (${num(o.power)} 0);
+    }
+}
+`);
   return (
     header("dictionary", "fvOptions") +
-    grilles.join("\n") +
+    parts.join("\n") +
     `
 // Keeps early iterations from running away. A converged answer should sit
 // well inside these limits.
@@ -692,7 +606,7 @@ SIMPLE
     momentumPredictor           false;
     nNonOrthogonalCorrectors    0;
 
-    // Only used when nothing fixes the pressure level (a sealed room).
+    // Only used when nothing fixes the pressure level (a sealed space).
     pRefCell                    0;
     pRefValue                   1e5;
 
@@ -721,6 +635,7 @@ relaxationFactors
 `;
 
 function thermo(p) {
+  const ref = p.s.ambients.house ? p.ambientK("house") : p.startT;
   return (
     header("dictionary", "thermophysicalProperties") +
     `// Air. Boussinesq: density only varies with temperature, which is all that
@@ -745,7 +660,7 @@ mixture
     equationOfState
     {
         rho0        ${RHO};
-        T0          ${num(p.houseT)};
+        T0          ${num(ref)};
         beta        3.4e-3;
     }
     thermodynamics
@@ -765,29 +680,63 @@ mixture
 
 // ---- Scripts --------------------------------------------------------------------
 
-const ALLRUN = `#!/bin/sh
-# Mesh and solve this case in place, then summarise it if foamy-report is on
-# PATH (it is inside the foamy-glop 'nix develop' shell).
+function allrun(p) {
+  // Patches with a fixed airflow must catch some faces, or the flow divides
+  // by zero area. Openings with none just do nothing, which is worth saying.
+  const mustHave = [...p.machines.flatMap((o) => [o.id + "In", o.id + "Out"]), ...p.fans.map((o) => o.id)];
+  const shouldHave = p.openings.map((o) => o.id);
+  return `#!/bin/sh
+# Mesh and solve this case in place, then summarise it into report.txt if
+# foamy-report is on PATH (it is inside the foamy-glop 'nix develop' shell).
 #
-#   ./Allrun                 # uses half the CPUs
+#   ./Allrun                 # picks a process count from the mesh size
 #   NPROCS=16 ./Allrun
 cd "\${0%/*}" || exit 1
 . "\${WM_PROJECT_DIR:?run this inside 'nix develop'}"/bin/tools/RunFunctions
-
-NPROCS="\${NPROCS:-$(( $(nproc) / 2 ))}"
-[ "$NPROCS" -ge 1 ] || NPROCS=1
 
 ./Allclean
 
 runApplication blockMesh
 runApplication topoSet
-runApplication subsetMesh air -patch ductWalls -overwrite
+runApplication subsetMesh air -patch surfaces -overwrite
 runApplication -s patches topoSet -dict system/topoSetDict.patches
 runApplication createPatch -overwrite
 runApplication transformPoints -scale ${INCH}
 runApplication checkMesh
 
+# Faces in a patch, from the mesh's boundary file.
+faces() {
+    awk -v p="$1" '$1 == p { found = 1 } found && $1 == "nFaces" { print $2 + 0; exit }' \\
+        constant/polyMesh/boundary
+}
+missing=""
+for patch in ${mustHave.join(" ")}
+do
+    [ "$(faces "$patch")" -gt 0 ] 2>/dev/null || missing="$missing $patch"
+done
+for patch in ${shouldHave.join(" ")}
+do
+    [ "$(faces "$patch")" -gt 0 ] 2>/dev/null || echo "Warning: $patch caught no faces, so it is closed." >&2
+done
+if [ -n "$missing" ]
+then
+    echo "These fans or machine faces caught no faces, so their airflow has nowhere to go:$missing" >&2
+    echo "Move them onto a surface (or out from behind another solid) and export again." >&2
+    exit 1
+fi
+
 cp -r 0.orig 0
+
+# About one process per 30k cells, up to half the CPUs: splitting a small
+# mesh further costs more in talking than it saves in solving.
+if [ -z "\${NPROCS:-}" ]
+then
+    cells=$(awk '$1 == "cells:" { print $2; exit }' log.checkMesh)
+    NPROCS=$(( \${cells:-0} / 30000 ))
+    max=$(( $(nproc) / 2 ))
+    [ "$NPROCS" -le "$max" ] || NPROCS=$max
+fi
+[ "$NPROCS" -ge 1 ] 2>/dev/null || NPROCS=1
 
 if [ "$NPROCS" -gt 1 ]
 then
@@ -808,21 +757,22 @@ grep -q "^End" "log.$(getApplication)" || {
 
 if command -v foamy-report > /dev/null
 then
-    foamy-report .
+    foamy-report . | tee report.txt
 fi
 `;
+}
 
 const ALLCLEAN = `#!/bin/sh
 cd "\${0%/*}" || exit 1
 . "\${WM_PROJECT_DIR:?run this inside 'nix develop'}"/bin/tools/CleanFunctions
 
 cleanCase0
-rm -f *.png
+rm -f *.png report.txt
 `;
 
 function readme(p) {
   const s = p.s;
-  const lines = [
+  return [
     `# ${s.name}`,
     "",
     s.notes || "",
@@ -835,10 +785,9 @@ function readme(p) {
     "./Allrun",
     "```",
     "",
-    `Room ${num(p.W)} × ${num(p.D)} × ${num(p.H)} in, ${s.objects.length} objects, ${s.solver.iterations} iterations.`,
+    `${s.items.length} items, ${s.solver.iterations} iterations.`,
     "",
-  ];
-  return lines.join("\n");
+  ].join("\n");
 }
 
 // ---- Entry point ----------------------------------------------------------------
@@ -856,7 +805,7 @@ export function exportCase(scenario) {
   const files = {
     "scenario.json": JSON.stringify(scenario, null, 2) + "\n",
     "README.md": readme(p),
-    Allrun: { content: ALLRUN, mode: 0o755 },
+    Allrun: { content: allrun(p), mode: 0o755 },
     Allclean: { content: ALLCLEAN, mode: 0o755 },
     "system/blockMeshDict": blockMeshDict(p),
     "system/topoSetDict": topoSetDict(p),

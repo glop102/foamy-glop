@@ -19,3 +19,6 @@ cases/closet/runs/
 
 # Python bytecode from importing report.py
 __pycache__/
+
+# Runs started from foamy-studio.
+/runs/

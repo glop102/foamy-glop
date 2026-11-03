@@ -1,0 +1,30 @@
+{
+  "version": 2,
+  "name": "two-rooms",
+  "notes": "Two rooms joined by a doorway and by a duct between their ceilings. A machine heats the left room and a fan pulls its air out the back; a vent in the right room's outside wall lets fresh air in. A person sits in the right room next to a pillar.",
+  "mesh": { "cellSize": 2, "fineZ": null },
+  "ambients": {
+    "house": { "label": "House", "temp": 70 },
+    "outside": { "label": "Outside", "temp": 45 },
+    "attic": { "label": "Attic", "temp": 55 },
+    "belowFloor": { "label": "Below floor", "temp": 65 }
+  },
+  "startTemp": 70,
+  "surfaces": { "construction": "interior", "ambient": "house" },
+  "solver": { "iterations": 600, "outflowHeight": null },
+  "items": [
+    { "id": "office", "kind": "air", "shape": { "type": "box", "min": [0, 0, 0], "max": [96, 96, 96] }, "surface": null },
+    { "id": "lab", "kind": "air", "shape": { "type": "box", "min": [100, 0, 0], "max": [196, 96, 96] }, "surface": null },
+    { "id": "doorway", "kind": "air", "shape": { "type": "box", "min": [96, 36, 0], "max": [100, 60, 80] }, "surface": null },
+    { "id": "crossDuct", "kind": "air", "shape": { "type": "path", "points": [[48, 48, 94], [48, 48, 104], [148, 48, 104], [148, 48, 94]], "diameter": 8 }, "surface": { "construction": "duct", "ambient": "attic" } },
+    { "id": "floor", "kind": "wall", "shape": { "type": "box", "min": [0, 0, -0.25], "max": [196, 96, 0.25] }, "construction": "slab", "ambient": "belowFloor" },
+    { "id": "ceiling", "kind": "wall", "shape": { "type": "box", "min": [0, 0, 95.75], "max": [196, 96, 96.25] }, "construction": "ceiling", "ambient": "attic" },
+    { "id": "outsideWall", "kind": "wall", "shape": { "type": "box", "min": [195.75, 0, 0], "max": [196.25, 96, 96] }, "construction": "exterior", "ambient": "outside" },
+    { "id": "officeWindow", "kind": "wall", "shape": { "type": "box", "min": [24, -0.25, 30], "max": [72, 0.25, 70] }, "construction": "window", "ambient": "outside" },
+    { "id": "server", "kind": "machine", "shape": { "type": "box", "min": [8, 40, 0], "max": [24, 56, 24] }, "power": 300, "cfm": 100, "intake": "+x", "exhaust": "+z" },
+    { "id": "person", "kind": "heat", "shape": { "type": "box", "min": [140, 40, 0], "max": [152, 52, 60] }, "power": 100 },
+    { "id": "pillar", "kind": "obstacle", "shape": { "type": "cylinder", "p1": [170, 70, 0], "p2": [170, 70, 96], "radius": 6 } },
+    { "id": "freshAir", "kind": "opening", "shape": { "type": "box", "min": [195.75, 40, 60], "max": [196.25, 56, 72] }, "ambient": "outside" },
+    { "id": "exhaustFan", "kind": "fan", "shape": { "type": "box", "min": [40, 95.75, 70], "max": [52, 96.25, 82] }, "cfm": 60, "direction": "out", "ambient": "house" }
+  ]
+}

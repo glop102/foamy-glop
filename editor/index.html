@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Room Scenario Editor</title>
+  <title>Airflow Scenario Studio</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="style.css">
   <script type="importmap">
@@ -17,18 +17,21 @@
 </head>
 <body>
   <header class="bar">
-    <input id="name" class="name" spellcheck="false" title="Scenario name (also the exported folder name)">
+    <input id="name" class="name" spellcheck="false" title="Scenario name (also the run and export folder name)">
     <div class="group">
       <select id="examples" title="Start from an example">
         <option value="">Examples…</option>
         <option value="examples/closet-gaming-load.json">Closet: gaming load</option>
         <option value="examples/closet-back-fan.json">Closet: back fan</option>
         <option value="examples/small-room.json">Small test room</option>
+        <option value="examples/two-rooms.json">Two rooms and a duct</option>
         <option value="new">Empty room</option>
       </select>
       <button id="open" title="Open a scenario .json">Open</button>
       <button id="save" title="Download the scenario as .json">Save</button>
-      <button id="export" class="primary" title="Download a runnable OpenFOAM case (.tar.gz)">Export case</button>
+      <button id="export" title="Download a runnable OpenFOAM case (.tar.gz)">Export</button>
+      <button id="run" class="primary" hidden title="Mesh and solve this scenario here">▶ Run</button>
+      <button id="runsToggle" hidden title="Show runs and results">Runs</button>
       <input id="file" type="file" accept=".json,application/json" hidden>
     </div>
     <div class="group">
@@ -36,14 +39,14 @@
       <button id="redo" title="Redo (Ctrl+Shift+Z)">↷</button>
     </div>
     <div class="group">
-      <button data-view="iso" title="View from the doorway corner">Iso</button>
+      <button data-view="iso" title="View from the front-right corner">Iso</button>
       <button data-view="top" title="View from above">Top</button>
-      <button data-view="front" title="View from the front wall">Front</button>
-      <button data-view="side" title="View from the right wall">Side</button>
+      <button data-view="front" title="View from the front">Front</button>
+      <button data-view="side" title="View from the right">Side</button>
     </div>
     <div class="group">
-      <label class="toggle" title="Move: drag the arrows. Resize: drag the dots on each face."><input type="radio" name="mode" value="move" checked> Move</label>
-      <label class="toggle"><input type="radio" name="mode" value="resize"> Resize</label>
+      <label class="toggle" title="Drag the arrows to move (M)"><input type="radio" name="mode" value="move" checked> Move</label>
+      <label class="toggle" title="Drag the dots on each face to resize (R)"><input type="radio" name="mode" value="resize"> Resize</label>
       <label class="toggle"><input type="checkbox" id="labels" checked> Labels</label>
     </div>
   </header>
@@ -52,10 +55,10 @@
     <aside class="left">
       <section>
         <h2>Add</h2>
-        <div id="add" class="add"></div>
+        <div id="add"></div>
       </section>
       <section class="grow">
-        <h2>Objects</h2>
+        <h2>Items <span class="sub">later surfaces win</span></h2>
         <ul id="list" class="list"></ul>
       </section>
       <section>
@@ -64,8 +67,18 @@
       </section>
     </aside>
 
-    <div id="viewport" class="viewport">
-      <div class="hint">Drag to orbit · right-drag to pan · scroll to zoom · click to select · Del deletes · Ctrl+D duplicates</div>
+    <div class="centre">
+      <div id="viewport" class="viewport">
+        <div id="placing" class="placing" hidden></div>
+        <div class="hint">Drag to orbit · right-drag to pan · scroll to zoom · click to select · Del deletes · Ctrl+D duplicates</div>
+      </div>
+      <div id="runs" class="runs" hidden>
+        <div class="runs-list">
+          <h2>Runs</h2>
+          <ul id="runList" class="list"></ul>
+        </div>
+        <div id="runDetail" class="run-detail"></div>
+      </div>
     </div>
 
     <aside class="right">

@@ -22,7 +22,7 @@
         LD_LIBRARY_PATH = "${pkgs.mesa}/lib";
       };
 
-      tools = pkgs: rec {
+      tools = pkgs: openfoam: rec {
         python = pkgs.python3.withPackages (ps: [
           ps.numpy
           ps.matplotlib
@@ -40,15 +40,24 @@
           exec ${pkgs.nodejs}/bin/node ${./editor}/cli.mjs "$@"
         '';
 
-        # The scenario editor is a static page; serve it locally.
-        # Pass a directory to serve a working copy instead of the flake's
-        # snapshot of editor/.
-        foamy-editor = pkgs.writeShellScriptBin "foamy-editor" ''
-          dir="''${1:-${./editor}}"
-          port="''${PORT:-8642}"
-          echo "foamy-glop editor at http://localhost:$port/  (Ctrl-C to stop)"
-          exec ${pkgs.python3}/bin/python3 -m http.server --bind 127.0.0.1 \
-            --directory "$dir" "$port"
+        # The editor plus a local job runner. Brings its own OpenFOAM
+        # environment, so `nix run .#studio` works outside `nix develop`.
+        # Inside the dev shell, `foamy-studio --editor editor` serves your
+        # working copy instead of the flake's snapshot.
+        foamy-studio = pkgs.writeShellScriptBin "foamy-studio" ''
+          if [ -z "''${WM_PROJECT_DIR:-}" ]
+          then
+              set +u
+              . ${openfoam}/${openfoam.foamProjectSubdir}/etc/bashrc
+          fi
+          export PATH="${
+            pkgs.lib.makeBinPath [
+              pkgs.openmpi
+              foamy-export
+              foamy-report
+            ]
+          }:$PATH"
+          exec ${pkgs.python3}/bin/python3 ${./tools/studio.py} --editor ${./editor} "$@"
         '';
       };
     in
@@ -56,13 +65,13 @@
       packages = forAllSystems (pkgs: rec {
         openfoam = pkgs.callPackage ./nix/openfoam.nix { };
         default = openfoam;
-        inherit (tools pkgs) foamy-report foamy-export foamy-editor;
+        inherit (tools pkgs openfoam) foamy-report foamy-export foamy-studio;
       });
 
       apps = forAllSystems (pkgs: {
-        editor = {
+        studio = {
           type = "app";
-          program = "${(tools pkgs).foamy-editor}/bin/foamy-editor";
+          program = "${self.packages.${pkgs.stdenv.hostPlatform.system}.foamy-studio}/bin/foamy-studio";
         };
       });
 
@@ -71,6 +80,7 @@
         let
           openfoam = self.packages.${pkgs.stdenv.hostPlatform.system}.openfoam;
           projectDir = "${openfoam}/${openfoam.foamProjectSubdir}";
+          t = tools pkgs openfoam;
         in
         {
           default = pkgs.mkShell (
@@ -88,12 +98,12 @@
                 pkgs.m4
                 pkgs.which
 
-                # tools/report.py, and the editor's exporter.
-                (tools pkgs).python
+                # tools/report.py, the editor's exporter and the studio.
+                t.python
                 pkgs.nodejs
-                (tools pkgs).foamy-report
-                (tools pkgs).foamy-export
-                (tools pkgs).foamy-editor
+                t.foamy-report
+                t.foamy-export
+                t.foamy-studio
               ];
 
               # Sourcing etc/bashrc is what makes an OpenFOAM shell an OpenFOAM
@@ -111,7 +121,7 @@
                 echo "OpenFOAM $WM_PROJECT_VERSION ($WM_OPTIONS)"
                 echo "  WM_PROJECT_DIR = $WM_PROJECT_DIR"
                 echo "  example case   = cases/cavity  (cd cases/cavity && ./Allrun)"
-                echo "  editor         = foamy-editor editor   (serves ./editor, see editor/README.md)"
+                echo "  studio         = foamy-studio --editor editor   (see editor/README.md)"
               '';
             }
           );

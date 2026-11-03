@@ -1,25 +1,33 @@
 {
-  "version": 1,
+  "version": 2,
   "name": "closet-gaming-load",
   "notes": "The server closet from cases/closet as built: door shut, gaming machine at a typical game load, HVAC off, no extra fans.",
-  "room": { "width": 60, "depth": 73, "height": 96, "cellSize": 1, "fineZ": 32 },
-  "temperatures": { "house": 68, "outside": 63, "attic": 63, "belowFloor": 68, "start": 95 },
-  "walls": {
-    "front": { "construction": "interior", "ambient": "house" },
-    "back": { "construction": "interior", "ambient": "house" },
-    "left": { "construction": "interior", "ambient": "house" },
-    "right": { "construction": "exterior", "ambient": "outside" },
-    "floor": { "construction": "floor", "ambient": "belowFloor" },
-    "ceiling": { "construction": "ceiling", "ambient": "attic" }
+  "mesh": { "cellSize": 1, "fineZ": 32 },
+  "ambients": {
+    "house": { "label": "House", "temp": 68 },
+    "outside": { "label": "Outside", "temp": 63 },
+    "attic": { "label": "Attic", "temp": 63 },
+    "belowFloor": { "label": "Below floor", "temp": 68 }
   },
+  "startTemp": 95,
+  "surfaces": { "construction": "interior", "ambient": "house" },
   "solver": { "iterations": 8000, "outflowHeight": null },
-  "objects": [
-    { "id": "ups", "type": "heater", "min": [2, 24, 5], "max": [19, 48, 8.5], "power": 10 },
-    { "id": "nas", "type": "machine", "min": [2, 24, 8.5], "max": [19, 48, 15.5], "power": 80, "cfm": 40, "intake": "-y", "exhaust": "+y" },
-    { "id": "gaming", "type": "machine", "min": [2, 24, 15.5], "max": [19, 48, 24.5], "power": 270, "cfm": 100, "intake": "-y", "exhaust": "+y" },
-    { "id": "dev", "type": "machine", "min": [2, 24, 24.5], "max": [19, 48, 31.5], "power": 120, "cfm": 50, "intake": "-y", "exhaust": "+y" },
-    { "id": "doorGap", "type": "vent", "wall": "front", "rect": [18, 0, 42, 1.5], "ambient": "house" },
-    { "id": "window", "type": "panel", "wall": "right", "rect": [36, 28, 66, 79], "construction": "window", "ambient": "outside" },
-    { "id": "office", "type": "duct", "register": [28, 31, 33, 42], "far": [30.5, -59.5], "diameter": 6, "bootHeight": 4, "grilleK": 4, "ambient": "house" }
+  "items": [
+    { "id": "room", "kind": "air", "shape": {"type": "box", "min": [0,0,0], "max": [60,73,96]}, "surface": null },
+    { "id": "rightWall", "kind": "wall", "shape": {"type": "box", "min": [59.75,0,0], "max": [60.25,73,96]}, "construction": "exterior", "ambient": "outside" },
+    { "id": "floor", "kind": "wall", "shape": {"type": "box", "min": [0,0,-0.25], "max": [60,73,0.25]}, "construction": "floor", "ambient": "belowFloor" },
+    { "id": "ceiling", "kind": "wall", "shape": {"type": "box", "min": [0,0,95.75], "max": [60,73,96.25]}, "construction": "ceiling", "ambient": "attic" },
+    { "id": "ups", "kind": "heater", "shape": {"type": "box", "min": [2,24,5], "max": [19,48,8.5]}, "power": 10 },
+    { "id": "nas", "kind": "machine", "shape": {"type": "box", "min": [2,24,8.5], "max": [19,48,15.5]}, "power": 80, "cfm": 40, "intake": "-y", "exhaust": "+y" },
+    { "id": "gaming", "kind": "machine", "shape": {"type": "box", "min": [2,24,15.5], "max": [19,48,24.5]}, "power": 270, "cfm": 100, "intake": "-y", "exhaust": "+y" },
+    { "id": "dev", "kind": "machine", "shape": {"type": "box", "min": [2,24,24.5], "max": [19,48,31.5]}, "power": 120, "cfm": 50, "intake": "-y", "exhaust": "+y" },
+    { "id": "doorGap", "kind": "opening", "shape": {"type": "box", "min": [18,-0.25,0], "max": [42,0.25,1.5]}, "ambient": "house" },
+    { "id": "window", "kind": "wall", "shape": {"type": "box", "min": [59.75,36,28], "max": [60.25,66,79]}, "construction": "window", "ambient": "outside" },
+    { "id": "officeBoot", "kind": "air", "shape": {"type": "box", "min": [28,31,96], "max": [33,42,101]}, "surface": {"construction": "duct", "ambient": "attic"} },
+    { "id": "officeFarBoot", "kind": "air", "shape": {"type": "box", "min": [28,-65,96], "max": [33,-54,101]}, "surface": {"construction": "duct", "ambient": "attic"} },
+    { "id": "officeDuct", "kind": "air", "shape": {"type": "cylinder", "p1": [30.5,36.5,103], "p2": [30.5,-59.5,103], "radius": 3}, "surface": {"construction": "duct", "ambient": "attic"} },
+    { "id": "officeGrille", "kind": "loss", "shape": {"type": "box", "min": [28,31,96], "max": [33,42,100]}, "K": 4, "axis": "z" },
+    { "id": "officeFarGrille", "kind": "loss", "shape": {"type": "box", "min": [28,-65,96], "max": [33,-54,100]}, "K": 4, "axis": "z" },
+    { "id": "officeRegister", "kind": "opening", "shape": {"type": "box", "min": [28,-65,95.75], "max": [33,-54,96.25]}, "ambient": "house" }
   ]
 }

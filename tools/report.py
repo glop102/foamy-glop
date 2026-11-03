@@ -209,36 +209,33 @@ def plot(run):
         print(f"  wrote {out}")
 
 
-# Walls drawn as the backdrop. The front, right and ceiling walls are left
-# out so the camera can see in from the doorway corner.
-BACKDROP = ("floor", "leftWall", "backWall")
-
-
 def patch_roles(run):
-    """{patch: role} for drawing: intake, exhaust, solid, opening or panel.
+    """{patch: role} for drawing: wall, glass, intake, exhaust, solid or opening.
 
     Editor exports carry scenario.json, which says what everything is; the
     hand-written closet case falls back to its own patch names.
     """
-    roles = {"rackWalls": "solid", "solidWalls": "solid"}
+    roles = {"surfaces": "wall", "solidWalls": "solid", "rackWalls": "solid"}
     path = os.path.join(run, "scenario.json")
     if os.path.exists(path):
         with open(path) as fh:
-            for o in json.load(fh)["objects"]:
-                t, i = o["type"], o["id"]
-                if t == "machine":
+            for o in json.load(fh).get("items", []):
+                k, i = o["kind"], o["id"]
+                if k == "machine":
                     roles[i + "In"] = "intake"
                     roles[i + "Out"] = "exhaust"
-                elif t == "heater":
+                elif k == "heater":
                     roles[i] = "solid"
-                elif t in ("vent", "fan"):
+                elif k in ("opening", "fan"):
                     roles[i] = "opening"
-                elif t == "duct":
-                    roles[i + "Far"] = "opening"
-                elif t == "panel":
-                    roles[i] = "panel"
+                elif k == "wall":
+                    roles[i] = "glass" if o.get("construction") == "window" else "wall"
+                elif k == "air" and o.get("surface"):
+                    roles[i] = "wall"
         return roles
-    roles.update({"ups": "solid", "window": "panel"})
+    for w in ("floor", "ceiling", "leftWall", "rightWall", "frontWall", "backWall", "ductWalls"):
+        roles[w] = "wall"
+    roles.update({"ups": "solid", "window": "glass"})
     for d in ("nas", "gaming", "dev"):
         roles[d + "Front"] = "intake"
         roles[d + "Back"] = "exhaust"
@@ -277,16 +274,16 @@ def scene_3d(plotter, air, patches, roles, title):
     temps = air.point_data["T"]
     clim = (np.percentile(temps, 1), np.percentile(temps, 99.5))
 
-    for name in BACKDROP:
-        if name in patches:
-            plotter.add_mesh(patches[name], color="#d8d4cc", opacity=0.35 if name != "floor" else 1.0)
-    if "ductWalls" in patches:
-        plotter.add_mesh(patches["ductWalls"], color="#b9b2a5", opacity=0.25)
+    # Walls with front-face culling: a wall's normal points out of the air,
+    # so walls between the camera and the room vanish and the far ones stay,
+    # like a dollhouse, whatever shape the space is.
     for name, role in roles.items():
         if name not in patches:
             continue
-        if role == "panel":
-            plotter.add_mesh(patches[name], color="#9ec9ff", opacity=0.5)
+        if role == "wall":
+            plotter.add_mesh(patches[name], color="#d8d4cc", opacity=0.45, culling="front")
+        elif role == "glass":
+            plotter.add_mesh(patches[name], color="#9ec9ff", opacity=0.5, culling="front")
         else:
             plotter.add_mesh(patches[name], color=ROLE_COLORS[role])
 
