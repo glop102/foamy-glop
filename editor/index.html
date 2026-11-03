@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Room Scenario Editor</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <header class="bar">
+    <input id="name" class="name" spellcheck="false" title="Scenario name (also the exported folder name)">
+    <div class="group">
+      <select id="examples" title="Start from an example">
+        <option value="">Examples…</option>
+        <option value="examples/closet-gaming-load.json">Closet: gaming load</option>
+        <option value="examples/closet-back-fan.json">Closet: back fan</option>
+        <option value="examples/small-room.json">Small test room</option>
+        <option value="new">Empty room</option>
+      </select>
+      <button id="open" title="Open a scenario .json">Open</button>
+      <button id="save" title="Download the scenario as .json">Save</button>
+      <button id="export" class="primary" title="Download a runnable OpenFOAM case (.tar.gz)">Export case</button>
+      <input id="file" type="file" accept=".json,application/json" hidden>
+    </div>
+    <div class="group">
+      <button id="undo" title="Undo (Ctrl+Z)">↶</button>
+      <button id="redo" title="Redo (Ctrl+Shift+Z)">↷</button>
+    </div>
+    <div class="group">
+      <button data-view="iso" title="View from the doorway corner">Iso</button>
+      <button data-view="top" title="View from above">Top</button>
+      <button data-view="front" title="View from the front wall">Front</button>
+      <button data-view="side" title="View from the right wall">Side</button>
+    </div>
+    <div class="group">
+      <label class="toggle" title="Move: drag the arrows. Resize: drag the dots on each face."><input type="radio" name="mode" value="move" checked> Move</label>
+      <label class="toggle"><input type="radio" name="mode" value="resize"> Resize</label>
+      <label class="toggle"><input type="checkbox" id="labels" checked> Labels</label>
+    </div>
+  </header>
+
+  <main>
+    <aside class="left">
+      <section>
+        <h2>Add</h2>
+        <div id="add" class="add"></div>
+      </section>
+      <section class="grow">
+        <h2>Objects</h2>
+        <ul id="list" class="list"></ul>
+      </section>
+      <section>
+        <h2>Checks <span id="problemCount" class="count"></span></h2>
+        <ul id="problems" class="problems"></ul>
+      </section>
+    </aside>
+
+    <div id="viewport" class="viewport">
+      <div class="hint">Drag to orbit · right-drag to pan · scroll to zoom · click to select · Del deletes · Ctrl+D duplicates</div>
+    </div>
+
+    <aside class="right">
+      <div id="props"></div>
+    </aside>
+  </main>
+
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>

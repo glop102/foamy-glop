@@ -7,7 +7,7 @@
 #
 # Each scenario runs in its own copy of the case under runs/<scenario>/, with
 # scenarios/<scenario> appended to system/closetSettings. Afterwards
-# report.py prints the key temperatures and writes runs/<scenario>/*.png.
+# tools/report.py prints the key temperatures and writes runs/<scenario>/*.png.
 cd "${0%/*}" || exit 1
 . "${WM_PROJECT_DIR:?run this inside 'nix develop'}"/bin/tools/RunFunctions
 
@@ -63,10 +63,10 @@ do
         rm -rf processor*
     ) || exit 1
 
-    python3 report.py "$run" || exit 1
+    python3 ../../tools/report.py "$run" || exit 1
 done
 
 if [ $# -gt 1 ]
 then
-    python3 report.py --compare $(printf 'runs/%s ' "$@")
+    python3 ../../tools/report.py --compare $(printf 'runs/%s ' "$@")
 fi

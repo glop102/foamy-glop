@@ -8,6 +8,18 @@ actually run:
   vents and an exhaust fan. See [its README](cases/closet/README.md).
 - `cases/cavity`: the classic lid-driven cavity, as a smoke test.
 
+And a 3D [scenario editor](editor/README.md) for building rooms like the
+closet without touching OpenFOAM's dictionaries: place machines, vents, fans
+and ducts, then export a case ready to `./Allrun`.
+
+```sh
+nix run .#editor     # http://localhost:8642/
+```
+
+Inside `nix develop`, `foamy-report <run>` summarises any finished run, with
+slice plots and a 3D render, and `foamy-export scenario.json <dir>` writes a
+case from a saved scenario.
+
 ## Quick start
 
 ```sh

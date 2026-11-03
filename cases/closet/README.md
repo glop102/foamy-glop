@@ -12,9 +12,10 @@ cd cases/closet
 NPROCS=24 ./Allrun gaming-load
 ```
 
-Each scenario runs in `runs/<scenario>/`. When it finishes, `report.py` prints
+Each scenario runs in `runs/<scenario>/`. When it finishes,
+[`tools/report.py`](../../tools/report.py) prints
 each machine's intake and exhaust temperature, airflow through the openings
-and heat lost through each wall, then writes three pictures into the run
+and heat lost through each wall, then writes these pictures into the run
 directory:
 
 - `side.png`: a slice through the middle of the rack, door on the left
@@ -22,9 +23,17 @@ directory:
 - `top.png`: a level slice through the middle of the gaming machine
 - `duct.png`: a side slice through the ceiling register, duct and office
   register
+- `3d.png`: the whole closet from the doorway corner, with streamlines from
+  the machines' exhausts and the openings coloured by temperature, and the
+  hottest 10% of the air shown as a see-through shell
 
-To see everything in 3D, `touch runs/<scenario>/case.foam` and open it in
-ParaView (`nix shell nixpkgs#paraview`).
+To turn that 3D view around yourself, `foamy-report --view runs/<scenario>`
+opens it in a window. For anything more, open `runs/<scenario>/case.foam`
+(written by the report) in ParaView (`nix shell nixpkgs#paraview`).
+
+The same closet is in the [scenario editor](../../editor/README.md) as
+`editor/examples/closet-*.json`, if you would rather move things around in 3D
+than edit `closetSettings`.
 
 ## The closet as modelled
 

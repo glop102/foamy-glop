@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "name": "small-room",
+  "notes": "A quick, coarse test: one machine on the floor, a door undercut and a wall fan. Meshes in seconds.",
+  "room": { "width": 48, "depth": 48, "height": 96, "cellSize": 2, "fineZ": 0 },
+  "temperatures": { "house": 70, "outside": 50, "attic": 60, "belowFloor": 70, "start": 75 },
+  "walls": {
+    "front": { "construction": "interior", "ambient": "house" },
+    "back": { "construction": "interior", "ambient": "house" },
+    "left": { "construction": "interior", "ambient": "house" },
+    "right": { "construction": "exterior", "ambient": "outside" },
+    "floor": { "construction": "floor", "ambient": "belowFloor" },
+    "ceiling": { "construction": "ceiling", "ambient": "attic" }
+  },
+  "solver": { "iterations": 400, "outflowHeight": null },
+  "objects": [
+    { "id": "box", "type": "machine", "min": [16, 20, 0], "max": [32, 36, 16], "power": 200, "cfm": 60, "intake": "-y", "exhaust": "+z" },
+    { "id": "shelf", "type": "obstacle", "min": [0, 40, 40], "max": [48, 48, 42] },
+    { "id": "door", "type": "vent", "wall": "front", "rect": [12, 0, 36, 2], "ambient": "house" },
+    { "id": "exhaust", "type": "fan", "wall": "back", "rect": [20, 80, 28, 88], "cfm": 30, "direction": "out", "ambient": "house" }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "name": "closet-gaming-load",
+  "notes": "The server closet from cases/closet as built: door shut, gaming machine at a typical game load, HVAC off, no extra fans.",
+  "room": { "width": 60, "depth": 73, "height": 96, "cellSize": 1, "fineZ": 32 },
+  "temperatures": { "house": 68, "outside": 63, "attic": 63, "belowFloor": 68, "start": 95 },
+  "walls": {
+    "front": { "construction": "interior", "ambient": "house" },
+    "back": { "construction": "interior", "ambient": "house" },
+    "left": { "construction": "interior", "ambient": "house" },
+    "right": { "construction": "exterior", "ambient": "outside" },
+    "floor": { "construction": "floor", "ambient": "belowFloor" },
+    "ceiling": { "construction": "ceiling", "ambient": "attic" }
+  },
+  "solver": { "iterations": 8000, "outflowHeight": null },
+  "objects": [
+    { "id": "ups", "type": "heater", "min": [2, 24, 5], "max": [19, 48, 8.5], "power": 10 },
+    { "id": "nas", "type": "machine", "min": [2, 24, 8.5], "max": [19, 48, 15.5], "power": 80, "cfm": 40, "intake": "-y", "exhaust": "+y" },
+    { "id": "gaming", "type": "machine", "min": [2, 24, 15.5], "max": [19, 48, 24.5], "power": 270, "cfm": 100, "intake": "-y", "exhaust": "+y" },
+    { "id": "dev", "type": "machine", "min": [2, 24, 24.5], "max": [19, 48, 31.5], "power": 120, "cfm": 50, "intake": "-y", "exhaust": "+y" },
+    { "id": "doorGap", "type": "vent", "wall": "front", "rect": [18, 0, 42, 1.5], "ambient": "house" },
+    { "id": "window", "type": "panel", "wall": "right", "rect": [36, 28, 66, 79], "construction": "window", "ambient": "outside" },
+    { "id": "office", "type": "duct", "register": [28, 31, 33, 42], "far": [30.5, -59.5], "diameter": 6, "bootHeight": 4, "grilleK": 4, "ambient": "house" }
+  ]
+}

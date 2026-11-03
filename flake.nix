@@ -12,11 +12,58 @@
       ];
 
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
+
+      # VTK (pyvista) is built against Nix's libglvnd, which cannot see the
+      # host's GL drivers outside NixOS. Hand it Nix's own Mesa, which still
+      # drives the real GPU (or falls back to llvmpipe).
+      glEnv = pkgs: {
+        __EGL_VENDOR_LIBRARY_DIRS = "${pkgs.mesa}/share/glvnd/egl_vendor.d";
+        LIBGL_DRIVERS_PATH = "${pkgs.mesa}/lib/dri";
+        LD_LIBRARY_PATH = "${pkgs.mesa}/lib";
+      };
+
+      tools = pkgs: rec {
+        python = pkgs.python3.withPackages (ps: [
+          ps.numpy
+          ps.matplotlib
+          ps.pyvista
+        ]);
+
+        # Result summary, slice plots and 3D renders for a finished run.
+        foamy-report = pkgs.writeShellScriptBin "foamy-report" ''
+          ${pkgs.lib.concatStrings (pkgs.lib.mapAttrsToList (k: v: "export ${k}=${v}\n") (glEnv pkgs))}
+          exec ${python}/bin/python3 ${./tools/report.py} "$@"
+        '';
+
+        # Scenario JSON -> OpenFOAM case directory, as the editor exports it.
+        foamy-export = pkgs.writeShellScriptBin "foamy-export" ''
+          exec ${pkgs.nodejs}/bin/node ${./editor}/cli.mjs "$@"
+        '';
+
+        # The scenario editor is a static page; serve it locally.
+        # Pass a directory to serve a working copy instead of the flake's
+        # snapshot of editor/.
+        foamy-editor = pkgs.writeShellScriptBin "foamy-editor" ''
+          dir="''${1:-${./editor}}"
+          port="''${PORT:-8642}"
+          echo "foamy-glop editor at http://localhost:$port/  (Ctrl-C to stop)"
+          exec ${pkgs.python3}/bin/python3 -m http.server --bind 127.0.0.1 \
+            --directory "$dir" "$port"
+        '';
+      };
     in
     {
       packages = forAllSystems (pkgs: rec {
         openfoam = pkgs.callPackage ./nix/openfoam.nix { };
         default = openfoam;
+        inherit (tools pkgs) foamy-report foamy-export foamy-editor;
+      });
+
+      apps = forAllSystems (pkgs: {
+        editor = {
+          type = "app";
+          program = "${(tools pkgs).foamy-editor}/bin/foamy-editor";
+        };
       });
 
       devShells = forAllSystems (
@@ -26,43 +73,48 @@
           projectDir = "${openfoam}/${openfoam.foamProjectSubdir}";
         in
         {
-          default = pkgs.mkShell {
-            packages = [
-              openfoam
-              pkgs.openmpi
+          default = pkgs.mkShell (
+            (glEnv pkgs)
+            // {
+              packages = [
+                openfoam
+                pkgs.openmpi
 
-              # wmake needs a full toolchain available to build your own
-              # solvers and function objects against the installed tree.
-              pkgs.bison
-              pkgs.flex
-              pkgs.gnumake
-              pkgs.m4
-              pkgs.which
+                # wmake needs a full toolchain available to build your own
+                # solvers and function objects against the installed tree.
+                pkgs.bison
+                pkgs.flex
+                pkgs.gnumake
+                pkgs.m4
+                pkgs.which
 
-              # cases/closet/report.py: result summary and plots.
-              (pkgs.python3.withPackages (ps: [
-                ps.numpy
-                ps.matplotlib
-              ]))
-            ];
+                # tools/report.py, and the editor's exporter.
+                (tools pkgs).python
+                pkgs.nodejs
+                (tools pkgs).foamy-report
+                (tools pkgs).foamy-export
+                (tools pkgs).foamy-editor
+              ];
 
-            # Sourcing etc/bashrc is what makes an OpenFOAM shell an OpenFOAM
-            # shell: it defines WM_*/FOAM_* and puts wmake on PATH. It is
-            # written for interactive use and reads unset variables freely, so
-            # nounset has to come off around it -- and go back exactly as it
-            # was, since this ends up in the caller's interactive shell.
-            shellHook = ''
-              __foamNounset="$(shopt -po nounset)"
-              set +u
-              source ${projectDir}/etc/bashrc
-              eval "$__foamNounset"
-              unset __foamNounset
+              # Sourcing etc/bashrc is what makes an OpenFOAM shell an OpenFOAM
+              # shell: it defines WM_*/FOAM_* and puts wmake on PATH. It is
+              # written for interactive use and reads unset variables freely, so
+              # nounset has to come off around it -- and go back exactly as it
+              # was, since this ends up in the caller's interactive shell.
+              shellHook = ''
+                __foamNounset="$(shopt -po nounset)"
+                set +u
+                source ${projectDir}/etc/bashrc
+                eval "$__foamNounset"
+                unset __foamNounset
 
-              echo "OpenFOAM $WM_PROJECT_VERSION ($WM_OPTIONS)"
-              echo "  WM_PROJECT_DIR = $WM_PROJECT_DIR"
-              echo "  example case   = cases/cavity  (cd cases/cavity && ./Allrun)"
-            '';
-          };
+                echo "OpenFOAM $WM_PROJECT_VERSION ($WM_OPTIONS)"
+                echo "  WM_PROJECT_DIR = $WM_PROJECT_DIR"
+                echo "  example case   = cases/cavity  (cd cases/cavity && ./Allrun)"
+                echo "  editor         = foamy-editor editor   (serves ./editor, see editor/README.md)"
+              '';
+            }
+          );
         }
       );
 

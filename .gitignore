@@ -16,3 +16,6 @@ result-*
 
 # Scenario runs of cases/closet, rebuilt by its Allrun.
 cases/closet/runs/
+
+# Python bytecode from importing report.py
+__pycache__/
