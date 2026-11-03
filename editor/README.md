@@ -5,7 +5,7 @@ space out of boxes, pipes and ducts, put machines, fans and openings in it,
 press Run, and watch it solve. No OpenFOAM dictionaries to write by hand.
 
 ```sh
-nix run .#studio          # http://localhost:8642/, runs go in ./runs/
+nix run .#studio          # http://localhost:8642/, cases go in cases/
 # or, inside `nix develop`, serve your working copy while you change it:
 foamy-studio --editor editor --export "node editor/cli.mjs"
 ```
@@ -53,18 +53,30 @@ Things snap to the mesh grid: `cellSize` cells, half as tall below
 - **Resize** mode: drag the dots on each face of a box.
 - **Checks** lists problems as you go. Errors (red) block Run and Export;
   warnings (yellow) will mesh but may not be what you meant.
-- **Save** and **Open** move scenario JSON in and out; the page also
-  autosaves in your browser. Ctrl+Z / Ctrl+Shift+Z undo and redo, Del
+- The **Open scenario** menu lists the cases in `cases/` first, then the
+  examples in `editor/examples/`, both read from disk each time you open
+  it. **Save** and **Open file** move scenario JSON in and out by hand; the
+  page also autosaves in your browser. Ctrl+Z / Ctrl+Shift+Z undo and redo, Del
   deletes, Ctrl+D duplicates, Esc deselects, M and R switch modes.
 
 ## Running
 
-With the studio, **▶ Run** exports the scenario to `runs/<name>/` and runs
-its `Allrun` there. The Runs panel shows the phase, the iteration, machine
-intake temperatures and solver residuals as they go, then the report and
-pictures. **Open 3D view** opens the PyVista window on your desktop;
-**Load scenario** brings a run's scenario back into the editor. A run with
-the same name is replaced, so rename the scenario to keep both.
+With the studio, **▶ Run** saves the scenario as a case in
+`cases/<name>/`, named after the scenario, and runs its `Allrun` there.
+Run it again and the case is replaced, so rename the scenario to keep both.
+Started anywhere in the repo, the studio uses the repo's `cases/`;
+`--cases DIR` puts them somewhere else.
+
+The studio only touches folders it made (the ones with a `scenario.json`),
+so hand-written cases like `cases/closet` are safe: a scenario with the same
+name is refused rather than replacing them.
+
+The Cases panel shows the phase, the iteration, machine intake temperatures
+and solver residuals as they go, then the report and pictures. **Open 3D
+view** opens the PyVista window on your desktop; **Load scenario** brings a
+case's scenario back into the editor. A case's scenario and generated files
+can be committed; what the run writes (logs, results, pictures) is
+git-ignored.
 
 Without the studio, Export downloads `<name>.tar.gz`:
 
@@ -101,7 +113,7 @@ by a doorway and a duct.
 ## Files
 
 - `index.html`, `style.css`, `src/app.js`: the editor.
-- `src/runs.js`: the Run button and Runs panel (only with the studio).
+- `src/runs.js`: the Run button, the Cases panel and the live scenario menu (only with the studio).
 - `src/model.js`: what a scenario is, defaults, snapping and checks.
 - `src/export.js`: scenario to OpenFOAM case.
 - `src/tar.js`: packs the case for download.

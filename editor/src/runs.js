@@ -43,12 +43,51 @@ export function initRuns({ getScenario, loadScenario }) {
     .then(() => {
       $("run").hidden = false;
       $("runsToggle").hidden = false;
+      // With the studio, Save puts the case in the cases folder; the old
+      // Save (a .json download) becomes Download.
+      $("saveCase").hidden = false;
+      $("save").textContent = "Download";
+      $("saveCase").addEventListener("click", () => submit(false));
+
+      // Keep the menu current with what's on disk: when it's pressed or
+      // focused, after every pick (letting go of focus so the next press
+      // counts), and every few seconds for cases made elsewhere.
+      const menu = $("examples");
+      for (const ev of ["pointerdown", "focus", "keydown"]) menu.addEventListener(ev, refreshMenu);
+      menu.addEventListener("change", () => menu.blur());
+      setInterval(refreshMenu, 5000);
       refresh();
     })
     .catch(() => {});
 
+  // The scenario menu: the cases on disk, then the examples, both read
+  // fresh from the studio. Only rebuilt when something changed, so an open
+  // menu isn't pulled out from under you.
+  let menuKey = "";
+  async function refreshMenu() {
+    let list;
+    try {
+      list = await api("scenarios");
+    } catch {
+      return;
+    }
+    const key = JSON.stringify(list);
+    if (key === menuKey) return;
+    menuKey = key;
+    const menu = $("examples");
+    const where = list.casesDir.split("/").slice(-2).join("/");
+    const cases = el("optgroup", { label: `Cases in ${where}` },
+      list.cases.length ? null : el("option", { disabled: true }, "None yet: press ▶ Run to make one"),
+      list.cases.map((c) => el("option", { value: c.url, disabled: !c.current, title: c.notes },
+        c.case + (c.current ? (c.status === "running" ? " (running)" : "") : " (old format, can't open)"))));
+    const examples = el("optgroup", { label: "Examples" },
+      list.examples.map((x) => el("option", { value: x.url, title: x.notes }, x.name)));
+    const fresh = el("optgroup", { label: "Start fresh" }, el("option", { value: "new" }, "Empty room"));
+    menu.replaceChildren(el("option", { value: "" }, "Open scenario…"), cases, examples, fresh);
+  }
+
   $("runsToggle").addEventListener("click", () => setOpen(!open));
-  $("run").addEventListener("click", startRun);
+  $("run").addEventListener("click", () => submit(true));
 
   function setOpen(v) {
     open = v;
@@ -74,23 +113,35 @@ export function initRuns({ getScenario, loadScenario }) {
       // studio went away; try again later
     }
     const running = runs.filter((r) => r.status === "running").length;
-    $("runsToggle").textContent = running ? `Runs (${running} running)` : "Runs";
+    $("runsToggle").textContent = running ? `Cases (${running} running)` : "Cases";
+    refreshMenu();
     schedule();
   }
 
-  async function startRun() {
+  // Save the scenario as cases/<name>/, and solve it if `run`.
+  async function submit(run) {
     const s = getScenario();
     const name = (s.name || "scenario").replace(/[^A-Za-z0-9._-]+/g, "-");
     const existing = runs.find((r) => r.name === name);
-    if (existing && existing.status !== "running" && !confirm(`Replace the existing run "${name}"? Rename the scenario to keep both.`)) return;
+    const hasResults = existing && !["saved", "running"].includes(existing.status);
+    if (hasResults && !confirm(`Replace the case "${name}" and its results? Rename the scenario to keep both.`)) return;
     try {
-      await api("runs", { method: "POST", body: JSON.stringify({ scenario: s }) });
+      await api("runs", { method: "POST", body: JSON.stringify({ scenario: s, run }) });
       selected = name;
-      setOpen(true);
+      lastKey = "";
+      if (run) setOpen(true);
+      else flash($("saveCase"), "Saved ✓");
+      menuKey = "";
       refresh();
     } catch (err) {
       alert(err.message);
     }
+  }
+
+  function flash(button, text) {
+    const was = button.textContent;
+    button.textContent = text;
+    setTimeout(() => (button.textContent = was), 1500);
   }
 
   async function act(path, method = "POST") {
@@ -108,14 +159,14 @@ export function initRuns({ getScenario, loadScenario }) {
         el("li", { class: r.name === selected ? "selected" : "", onclick: () => { selected = r.name; lastKey = ""; refresh(); } },
           r.name, el("span", { class: `badge ${r.status}` }, r.status))),
     );
-    if (!runs.length) $("runList").append(el("li", { class: "settings" }, "Nothing run yet."));
+    if (!runs.length) $("runList").append(el("li", { class: "settings" }, "No cases yet."));
 
     // Rebuild the detail only when something in it changed, so images and
     // scrolling don't jump every poll.
     const key = detail ? JSON.stringify([detail.status, detail.iteration, detail.phase, detail.images, !!detail.report, detail.series && Object.values(detail.series).map((s) => s.length)]) : "none";
     if (key === lastKey) return;
     lastKey = key;
-    $("runDetail").replaceChildren(...(detail ? detailView(detail) : [el("p", { class: "empty" }, "Press ▶ Run to mesh and solve the scenario here.")]));
+    $("runDetail").replaceChildren(...(detail ? detailView(detail) : [el("p", { class: "empty" }, "Press ▶ Run to save the scenario as a case and solve it.")]));
     if (detail) drawCharts(detail);
   }
 
@@ -130,10 +181,11 @@ export function initRuns({ getScenario, loadScenario }) {
         el("span", { class: "note" }, phase),
         d.status === "running" ? el("button", { onclick: () => act(`runs/${enc}/stop`) }, "Stop") : null,
         d.status === "done" ? el("button", { title: "Opens the PyVista window on this computer", onclick: () => act(`runs/${enc}/view`) }, "Open 3D view") : null,
-        el("button", { title: "Load this run's scenario into the editor", onclick: async () => loadScenario(await (await fetch(`api/runs/${enc}/files/scenario.json`)).json()) }, "Load scenario"),
-        d.status !== "running" ? el("button", { class: "danger", onclick: () => confirm(`Delete the run "${d.name}"?`) && act(`runs/${enc}`, "DELETE") }, "Delete") : null),
+        el("button", { title: "Load this case's scenario into the editor", onclick: async () => loadScenario(await (await fetch(`api/runs/${enc}/files/scenario.json`)).json()) }, "Load scenario"),
+        d.status !== "running" ? el("button", { class: "danger", onclick: () => confirm(`Delete the case "${d.name}" and its results?`) && act(`runs/${enc}`, "DELETE") }, "Delete") : null),
       el("div", { class: "progress" }, el("div", { style: `width:${pct}%` })),
     ];
+    if (d.status === "saved") out.push(el("p", { class: "note" }, "Saved, not run yet. Open it from the scenario menu and press ▶ Run to solve it."));
     const hasSeries = d.series && Object.keys(d.series).length;
     if (hasSeries || d.residuals?.p_rgh?.length)
       out.push(el("div", { class: "charts" },

@@ -19,19 +19,24 @@
   <header class="bar">
     <input id="name" class="name" spellcheck="false" title="Scenario name (also the run and export folder name)">
     <div class="group">
-      <select id="examples" title="Start from an example">
-        <option value="">Examples…</option>
-        <option value="examples/closet-gaming-load.json">Closet: gaming load</option>
-        <option value="examples/closet-back-fan.json">Closet: back fan</option>
-        <option value="examples/small-room.json">Small test room</option>
-        <option value="examples/two-rooms.json">Two rooms and a duct</option>
-        <option value="new">Empty room</option>
+      <select id="examples" title="Open a case or an example">
+        <option value="">Open scenario…</option>
+        <optgroup label="Examples">
+          <option value="examples/closet-gaming-load.json">closet-gaming-load</option>
+          <option value="examples/closet-back-fan.json">closet-back-fan</option>
+          <option value="examples/small-room.json">small-room</option>
+          <option value="examples/two-rooms.json">two-rooms</option>
+        </optgroup>
+        <optgroup label="Start fresh">
+          <option value="new">Empty room</option>
+        </optgroup>
       </select>
-      <button id="open" title="Open a scenario .json">Open</button>
+      <button id="open" title="Open a scenario .json file">Open file</button>
+      <button id="saveCase" hidden title="Save the scenario as a case in the cases folder, without running it">Save</button>
       <button id="save" title="Download the scenario as .json">Save</button>
       <button id="export" title="Download a runnable OpenFOAM case (.tar.gz)">Export</button>
       <button id="run" class="primary" hidden title="Mesh and solve this scenario here">▶ Run</button>
-      <button id="runsToggle" hidden title="Show runs and results">Runs</button>
+      <button id="runsToggle" hidden title="Show cases and their results">Cases</button>
       <input id="file" type="file" accept=".json,application/json" hidden>
     </div>
     <div class="group">
@@ -74,7 +79,7 @@
       </div>
       <div id="runs" class="runs" hidden>
         <div class="runs-list">
-          <h2>Runs</h2>
+          <h2>Cases</h2>
           <ul id="runList" class="list"></ul>
         </div>
         <div id="runDetail" class="run-detail"></div>

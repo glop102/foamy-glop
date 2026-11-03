@@ -14,11 +14,18 @@ cases/*/[0-9]*.[0-9]*/
 result
 result-*
 
-# Scenario runs of cases/closet, rebuilt by its Allrun.
-cases/closet/runs/
-
 # Python bytecode from importing report.py
 __pycache__/
 
-# Runs started from foamy-studio.
-/runs/
+# What foamy-studio and an exported Allrun write into a case. The scenario
+# and the case files it exported stay, so a case can be committed.
+cases/*/allrun.log
+cases/*/studio.json
+cases/*/report.txt
+cases/*/case.foam
+cases/*/*.png
+cases/*/runs/
+
+# An exported case's 0/ is a copy of 0.orig made by Allrun. (Hand-written
+# cases like cavity keep their 0/ tracked; tracked files are not affected.)
+cases/*/0/

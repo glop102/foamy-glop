@@ -1,21 +1,26 @@
 #!/usr/bin/env python3
 """foamy-studio: the scenario editor plus a local job runner.
 
-    foamy-studio [--runs DIR] [--port 8642] [--editor DIR]
+    foamy-studio [--cases DIR] [--port 8642] [--editor DIR]
 
 Serves the editor and a small JSON API it uses to run scenarios here:
 
     GET    /api/ping                     is the studio there
-    GET    /api/runs                     every run, newest first
-    POST   /api/runs                     {scenario, nprocs?}: export and start
+    GET    /api/scenarios                cases and examples, for the editor's menu
+    GET    /api/runs                     every studio case, newest first
+    POST   /api/runs                     {scenario, nprocs?, run?}: save as a case, and
+                                         solve it unless run is false
     GET    /api/runs/<name>              status, progress, series, report
     GET    /api/runs/<name>/files/<f>    a file from the run (images, scenario)
     POST   /api/runs/<name>/stop         stop it
     POST   /api/runs/<name>/view         open the 3D view in a desktop window
     DELETE /api/runs/<name>              delete a finished run
 
-Each run is runs/<scenario name>/: the exported case, meshed and solved in
-place by its own Allrun. Listens on localhost only.
+Each scenario runs as cases/<scenario name>/: the exported case, meshed and
+solved in place by its own Allrun. The cases folder is the repo's cases/
+when the studio is started anywhere inside the repo. Folders without the
+studio's scenario.json, such as hand-written cases, are listed nowhere and
+never touched. Listens on localhost only.
 """
 
 import argparse
@@ -82,6 +87,8 @@ class Run:
             return "stopped"
         if code is None:
             # Not started by this studio: judge by what is on disk.
+            if not glob.glob(self.file("log.*")):
+                return "saved"
             if os.path.exists(self.file("report.txt")):
                 return "done"
             solver = self.file("log.buoyantSimpleFoam")
@@ -209,8 +216,9 @@ def tail(path, nbytes):
 
 
 class Studio:
-    def __init__(self, runs_dir, export_cmd, report_cmd):
+    def __init__(self, runs_dir, examples_dir, export_cmd, report_cmd):
         self.runs_dir = os.path.abspath(runs_dir)
+        self.examples_dir = examples_dir
         self.export_cmd = export_cmd
         self.report_cmd = report_cmd
         self.runs = {}
@@ -218,22 +226,56 @@ class Studio:
         os.makedirs(self.runs_dir, exist_ok=True)
 
     def get(self, name):
-        if not NAME.match(name):
+        """A studio case by name. Anything else in the folder, such as a
+        hand-written case, is invisible here, so it can't be stopped,
+        deleted or served."""
+        if not self.is_case(name):
             return None
         path = os.path.join(self.runs_dir, name)
-        if not os.path.isdir(path):
-            return None
         with self.lock:
             if name not in self.runs:
                 self.runs[name] = Run(path)
             return self.runs[name]
 
+    def is_case(self, name):
+        """A folder the studio made: it has the scenario it was exported from."""
+        return bool(NAME.match(name)) and os.path.isfile(os.path.join(self.runs_dir, name, "scenario.json"))
+
     def list(self):
-        names = [n for n in os.listdir(self.runs_dir) if NAME.match(n) and os.path.isdir(os.path.join(self.runs_dir, n))]
-        runs = [self.get(n) for n in names]
+        runs = [self.get(n) for n in os.listdir(self.runs_dir) if self.is_case(n)]
         return sorted((r.summary() for r in runs if r), key=lambda r: -r["modified"])
 
-    def start(self, scenario, nprocs):
+    def scenarios(self):
+        """What the editor's scenario menu offers: cases first, then examples."""
+
+        def describe(path):
+            try:
+                with open(path) as fh:
+                    s = json.load(fh)
+            except (OSError, ValueError):
+                return None
+            return {
+                "name": s.get("name") or os.path.splitext(os.path.basename(path))[0],
+                "notes": s.get("notes", ""),
+                "current": isinstance(s.get("items"), list),
+            }
+
+        cases = []
+        for name in sorted(os.listdir(self.runs_dir), key=str.lower):
+            if self.is_case(name):
+                d = describe(os.path.join(self.runs_dir, name, "scenario.json"))
+                if d:
+                    run = self.get(name)
+                    cases.append({**d, "case": name, "status": run.status() if run else "unknown",
+                                  "url": f"api/runs/{name}/files/scenario.json"})
+        examples = []
+        for path in sorted(glob.glob(os.path.join(self.examples_dir, "*.json"))):
+            d = describe(path)
+            if d:
+                examples.append({**d, "url": "examples/" + os.path.basename(path)})
+        return {"casesDir": self.runs_dir, "cases": cases, "examples": examples}
+
+    def start(self, scenario, nprocs, run=True):
         name = re.sub(r"[^A-Za-z0-9._-]+", "-", str(scenario.get("name") or "scenario")).strip("-.") or "scenario"
         path = os.path.join(self.runs_dir, name)
         existing = self.get(name)
@@ -241,7 +283,7 @@ class Studio:
             return HTTPStatus.CONFLICT, {"error": f"{name} is already running. Stop it first, or rename the scenario."}
         if os.path.isdir(path):
             if not os.path.exists(os.path.join(path, "scenario.json")):
-                return HTTPStatus.CONFLICT, {"error": f"{path} exists and is not a studio run; not touching it."}
+                return HTTPStatus.CONFLICT, {"error": f"{path} already exists and wasn't made by the studio, so it won't be replaced. Rename the scenario."}
             shutil.rmtree(path)
 
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
@@ -254,6 +296,12 @@ class Studio:
         if res.returncode != 0:
             shutil.rmtree(path, ignore_errors=True)
             return HTTPStatus.BAD_REQUEST, {"error": (res.stderr or res.stdout).strip()}
+
+        if not run:
+            saved = Run(path)
+            with self.lock:
+                self.runs[name] = saved
+            return HTTPStatus.CREATED, saved.summary()
 
         env = dict(os.environ)
         if nprocs:
@@ -332,13 +380,15 @@ def handler(studio, editor_dir):
             if parts is None:
                 return super().do_GET()
             if parts == ["ping"]:
-                return self.send_json(HTTPStatus.OK, {"studio": True, "runs": studio.runs_dir})
+                return self.send_json(HTTPStatus.OK, {"studio": True, "cases": studio.runs_dir})
+            if parts == ["scenarios"]:
+                return self.send_json(HTTPStatus.OK, studio.scenarios())
             if parts == ["runs"]:
                 return self.send_json(HTTPStatus.OK, studio.list())
             if len(parts) >= 2 and parts[0] == "runs":
                 run = studio.get(parts[1])
                 if not run:
-                    return self.send_json(HTTPStatus.NOT_FOUND, {"error": "No such run."})
+                    return self.send_json(HTTPStatus.NOT_FOUND, {"error": "No such case."})
                 if len(parts) == 2:
                     return self.send_json(HTTPStatus.OK, run.details())
                 if parts[2] == "files" and len(parts) == 4:
@@ -377,11 +427,11 @@ def handler(studio, editor_dir):
             if parts == ["runs"]:
                 if not isinstance(body.get("scenario"), dict):
                     return self.send_json(HTTPStatus.BAD_REQUEST, {"error": "No scenario."})
-                return self.send_json(*studio.start(body["scenario"], body.get("nprocs")))
+                return self.send_json(*studio.start(body["scenario"], body.get("nprocs"), body.get("run", True) is not False))
             if len(parts) == 3 and parts[0] == "runs":
                 run = studio.get(parts[1])
                 if not run:
-                    return self.send_json(HTTPStatus.NOT_FOUND, {"error": "No such run."})
+                    return self.send_json(HTTPStatus.NOT_FOUND, {"error": "No such case."})
                 if parts[2] == "stop":
                     return self.send_json(*studio.stop(run))
                 if parts[2] == "view":
@@ -399,10 +449,22 @@ def handler(studio, editor_dir):
     return Handler
 
 
+def find_cases():
+    """The repo's cases/ from anywhere inside the repo, else ./cases."""
+    d = os.getcwd()
+    while True:
+        if os.path.isdir(os.path.join(d, "cases")) and os.path.exists(os.path.join(d, "flake.nix")):
+            return os.path.join(d, "cases")
+        parent = os.path.dirname(d)
+        if parent == d:
+            return os.path.join(os.getcwd(), "cases")
+        d = parent
+
+
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
     ap = argparse.ArgumentParser(description="Scenario editor with a local job runner.")
-    ap.add_argument("--runs", default="runs", help="where runs go (default: ./runs)")
+    ap.add_argument("--cases", default=None, help="where cases go (default: the repo's cases/, else ./cases)")
     ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8642)))
     ap.add_argument("--editor", default=os.path.join(here, "..", "editor"), help="editor directory to serve")
     ap.add_argument("--export", default="foamy-export", help="command that exports a scenario")
@@ -411,9 +473,10 @@ def main():
 
     if not os.environ.get("WM_PROJECT_DIR"):
         sys.exit("foamy-studio runs OpenFOAM, so it needs the OpenFOAM environment: start it inside 'nix develop' or with 'nix run .#studio'.")
-    studio = Studio(args.runs, args.export.split(), args.report.split())
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), handler(studio, os.path.abspath(args.editor)))
-    print(f"foamy-studio at http://localhost:{args.port}/  (runs in {studio.runs_dir}; Ctrl-C to stop)")
+    editor = os.path.abspath(args.editor)
+    studio = Studio(args.cases or find_cases(), os.path.join(editor, "examples"), args.export.split(), args.report.split())
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), handler(studio, editor))
+    print(f"foamy-studio at http://localhost:{args.port}/  (cases in {studio.runs_dir}; Ctrl-C to stop)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
